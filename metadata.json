@@ -1,0 +1,6 @@
+{
+  "name": "Portal do Vereador",
+  "description": "Plataforma de gestão de demandas legislativas com IA e integração n8n/Supabase",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
