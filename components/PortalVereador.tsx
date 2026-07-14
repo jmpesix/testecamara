@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { 
   MessageSquare, 
   Filter,
@@ -40,11 +39,7 @@ import {
   TrendingUp,
   Activity,
   ShieldAlert,
-  Crown,
-  Tags,
-  Heart,
-  Timer,
-  Cpu
+  Crown
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -71,7 +66,7 @@ export default function PortalVereador() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all'>('all');
+  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all'>('mine');
   const [mainView, setMainView] = useState<'all' | 'vereadores' | 'duvidas' | 'reclamacoes' | 'resolved' | 'reports'>('all');
   const [lastSync, setLastSync] = useState<Date>(new Date());
   const [inboxFilter, setInboxFilter] = useState<number | null>(null);
@@ -103,8 +98,6 @@ export default function PortalVereador() {
   const [loadingReports, setLoadingReports] = useState(false);
   const [inboxInfo, setInboxInfo] = useState<any>(null);
   const [showContactDetails, setShowContactDetails] = useState(true);
-  const [reportSubView, setReportSubView] = useState<'overview' | 'conversations' | 'agents' | 'inboxes' | 'teams' | 'labels' | 'csat' | 'sla' | 'bots'>('overview');
-  const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
 
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -422,7 +415,7 @@ export default function PortalVereador() {
     if (inboxSubFilter === 'unassigned') return !msg.assignee || msg.assignee === 'Não atribuído';
     
     return true;
-  }).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const availableInboxes = Array.from(new Set(messages.map(m => m.inbox_id))).filter(Boolean);
 
@@ -430,10 +423,25 @@ export default function PortalVereador() {
 
   return (
     <div className="flex h-screen bg-[#f4f1ea] text-[#0a192f] font-sans selection:bg-[#c5a059]/30 overflow-hidden">
+      {/* Sidebar Left - Professional Navy */}
+      <div className="w-16 bg-[#0a192f] border-r border-[#c5a059]/20 flex flex-col items-center py-6 gap-8 z-30 shadow-2xl">
+        <div className="w-10 h-10 bg-[#c5a059] rounded-lg flex items-center justify-center text-[#0a192f] font-serif font-bold text-lg shadow-lg border border-[#c5a059]/50">
+          SJB
+        </div>
+        <div className="flex flex-col gap-4">
+          <button className="p-3 text-[#c5a059] bg-[#c5a059]/10 rounded-xl border border-[#c5a059]/20 shadow-inner">
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button className="p-3 text-slate-500 hover:text-[#c5a059] transition-colors">
+            <Users className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
       {/* Sidebar Main - Institutional Navigation */}
       <div className="w-72 bg-[#0a192f] border-r border-[#c5a059]/10 flex flex-col z-20 shadow-xl">
         <div className="p-8 border-b border-[#c5a059]/10 space-y-6">
-          <div className="text-center flex flex-col items-center">
+          <div className="text-center">
             <h1 className="font-serif text-lg font-bold text-[#c5a059] leading-tight tracking-wide uppercase">
               Câmara Municipal
             </h1>
@@ -458,16 +466,13 @@ export default function PortalVereador() {
             </span>
             <div className="space-y-1">
               {[
-                { id: 'all', icon: Hash, label: 'Caixa de Entrada Geral', sublabel: 'Todas as Demandas', color: 'text-[#c5a059]' },
+                { id: 'all', icon: Hash, label: 'Portal Geral', sublabel: 'Todas as Demandas', color: 'text-[#c5a059]' },
                 { id: 'vereadores', icon: Users, label: 'Gabinete Legislativo', sublabel: 'Vereadores Ativos', color: 'text-blue-400' },
                 { id: 'duvidas', icon: AtSign, label: 'Dúvidas e Informações', sublabel: 'Informações Oficiais', color: 'text-emerald-400' },
                 { id: 'reclamacoes', icon: Clock, label: 'Ouvidoria de Reclamações', sublabel: 'Reclamações e Críticas', color: 'text-amber-400' },
                 { id: 'resolved', icon: CheckCheck, label: 'Protocolos Resolvidos', sublabel: 'Casos Resolvidos', color: 'text-slate-400' },
-                { id: 'reports', icon: BarChart3, label: 'Auditoria e Relatórios', sublabel: 'Métricas de Desempenho', color: 'text-purple-400', hasSubmenu: true }
+                { id: 'reports', icon: BarChart3, label: 'Auditoria e Relatórios', sublabel: 'Métricas de Desempenho', color: 'text-purple-400' }
               ].map((item) => {
-                const isActive = mainView === item.id;
-                const isReports = item.id === 'reports';
-
                 const itemCount = messages.filter(msg => {
                   const sourceLower = (msg.source || '').toLowerCase();
                   if (item.id === 'reports') return false;
@@ -481,83 +486,32 @@ export default function PortalVereador() {
                 }).length;
 
                 return (
-                  <div key={item.id} className="space-y-1">
-                    <button 
-                      onClick={() => {
-                        if (isReports) {
-                          setIsReportsMenuOpen(!isReportsMenuOpen);
-                          setMainView('reports');
-                        } else {
-                          setMainView(item.id as any);
-                          setSelectedMessage(null);
-                        }
-                      }}
-                      className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
-                        isActive 
-                          ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
-                          : 'hover:bg-white/5 border-transparent text-slate-400'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                          <item.icon className={`w-4 h-4 ${isActive ? 'text-[#c5a059]' : 'text-slate-500 group-hover:text-slate-300'}`} />
-                          <span className="text-xs font-bold tracking-tight">{item.label}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {itemCount > 0 && (
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                              isActive ? 'bg-[#c5a059] text-[#0a192f]' : 'bg-white/10 text-slate-500'
-                            }`}>
-                              {itemCount}
-                            </span>
-                          )}
-                          {isReports && (
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isReportsMenuOpen ? 'rotate-180' : ''}`} />
-                          )}
-                        </div>
+                  <button 
+                    key={item.id} 
+                    onClick={() => {
+                      setMainView(item.id as any);
+                      if (item.id === 'reports') setSelectedMessage(null);
+                    }}
+                    className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
+                      mainView === item.id 
+                        ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
+                        : 'hover:bg-white/5 border-transparent text-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3">
+                        <item.icon className={`w-4 h-4 ${mainView === item.id ? 'text-[#c5a059]' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                        <span className="text-xs font-bold tracking-tight">{item.label}</span>
                       </div>
-                    </button>
-
-                    {/* Submenu de Relatórios */}
-                    {isReports && (
-                      <AnimatePresence>
-                        {isReportsMenuOpen && (
-                          <motion.div 
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden pl-10 space-y-1"
-                          >
-                            {[
-                              { id: 'overview', label: 'Visão geral' },
-                              { id: 'conversations', label: 'Conversas' },
-                              { id: 'agents', label: 'Agentes' },
-                              { id: 'labels', label: 'Etiquetas' },
-                              { id: 'teams', label: 'Time' },
-                              { id: 'csat', label: 'CSAT' },
-                              { id: 'sla', label: 'SLA' },
-                              { id: 'bots', label: 'Robôs' }
-                            ].map((sub) => (
-                              <button
-                                key={sub.id}
-                                onClick={() => {
-                                  setReportSubView(sub.id as any);
-                                  setMainView('reports');
-                                }}
-                                className={`w-full text-left py-2 text-[11px] font-medium transition-all ${
-                                  reportSubView === sub.id && mainView === 'reports'
-                                    ? 'text-[#c5a059]' 
-                                    : 'text-slate-500 hover:text-slate-300'
-                                }`}
-                              >
-                                {sub.label}
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    )}
-                  </div>
+                      {itemCount > 0 && (
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          mainView === item.id ? 'bg-[#c5a059] text-[#0a192f]' : 'bg-white/10 text-slate-500'
+                        }`}>
+                          {itemCount}
+                        </span>
+                      )}
+                    </div>
+                  </button>
                 );
               })}
             </div>
@@ -600,11 +554,30 @@ export default function PortalVereador() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center">
-            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0a192f] border-b-2 border-[#c5a059] pb-1">
-              CAIXA DE ENTRADA CÂMARA
-            </h4>
-          </div>
+          {['all', 'vereadores'].includes(mainView) ? (
+            <div className="flex items-center gap-6">
+              {[
+                { id: 'mine', label: 'Meus Protocolos' },
+                { id: 'unassigned', label: 'Sem Atribuição' },
+                { id: 'all', label: 'Toda Câmara' }
+              ].map((tab) => (
+                <button 
+                  key={tab.id}
+                  onClick={() => setInboxSubFilter(tab.id as any)}
+                  className={`pb-3 text-[10px] font-black uppercase tracking-[0.1em] transition-all relative ${inboxSubFilter === tab.id ? 'text-[#0a192f]' : 'text-slate-400'}`}
+                >
+                  {tab.label}
+                  {inboxSubFilter === tab.id && <motion.div layoutId="subfilter" className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a059] rounded-full" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex-1 flex justify-center">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0a192f] border-b-2 border-[#c5a059] pb-1">
+                Meus Protocolos
+              </h4>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#fcfaf5]">
@@ -640,7 +613,7 @@ export default function PortalVereador() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 mb-3 line-clamp-2 leading-relaxed italic opacity-80">
-                      &quot;{msg.message}&quot;
+                      "{msg.message}"
                     </p>
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex flex-wrap gap-1.5">
@@ -683,304 +656,132 @@ export default function PortalVereador() {
       {/* Main Chat View - Parchment Document Style */}
       <div className="flex-1 flex flex-col bg-[#f4f1ea] relative">
         {mainView === 'reports' ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#fdfcf9] p-10">
-            <div className="max-w-5xl mx-auto space-y-8">
-              
-              {/* Título Dinâmico */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-[#fdfcf9]">
+            <div className="max-w-6xl mx-auto space-y-8">
+              {/* Cabeçalho Profissional */}
               <div className="flex items-center justify-between border-b border-[#c5a059]/20 pb-6">
                 <div>
-                  <h2 className="font-serif text-3xl font-bold text-[#0a192f]">
-                    {reportSubView === 'overview' && 'Auditoria e Controle de Demandas'}
-                    {reportSubView === 'conversations' && 'Análise de Conversas e Canais'}
-                    {reportSubView === 'agents' && 'Desempenho de Agentes'}
-                    {reportSubView === 'teams' && 'Resumo do Time'}
-                    {reportSubView === 'labels' && 'Desempenho por Etiquetas'}
-                    {reportSubView === 'csat' && 'Índice de Satisfação (CSAT)'}
-                    {reportSubView === 'sla' && 'Relatórios de SLA'}
-                    {reportSubView === 'bots' && 'Métricas de Automação (Robôs)'}
-                  </h2>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c5a059] mt-1">
-                    {reportSubView === 'overview' && 'Relatórios de Desempenho Legislativo'}
-                    {reportSubView === 'conversations' && 'Métricas de Fluxo e Performance por Caixa de Entrada'}
-                    {reportSubView === 'agents' && 'Produtividade Individual da Equipe'}
-                    {reportSubView === 'teams' && 'Gestão de Gabinetes e Departamentos'}
-                    {reportSubView === 'labels' && 'Categorização e Frequência de Assuntos'}
-                    {reportSubView === 'csat' && 'Feedback e Qualidade do Atendimento'}
-                    {reportSubView === 'sla' && 'Cumprimento de Prazos Institucionais'}
-                    {reportSubView === 'bots' && 'Eficácia de Respostas Automáticas'}
-                  </p>
+                  <h2 className="font-serif text-3xl font-bold text-[#0a192f]">Auditoria e Controle de Demandas</h2>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c5a059] mt-1">Relatórios de Desempenho Legislativo</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={fetchReports} className="flex items-center gap-2 px-4 py-2 bg-[#0a192f] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#1a2e4d] transition-all">
-                    <RefreshCw className="w-3 h-3" />
-                    Sincronizar
+                    <Activity className="w-3 h-3" />
+                    Sincronizar Dados
                   </button>
                 </div>
               </div>
 
-              {reportSubView === 'overview' && (
-                  <>
-                    {/* Grid de Métricas Diretas */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      {[
-                        { label: 'Volume Total', value: reportSummary?.conversations_count || 0, color: 'text-[#0a192f]' },
-                        { label: 'Resolvidos', value: reportSummary?.resolutions_count || 0, color: 'text-emerald-600' },
-                        { label: 'T. Médio Resposta', value: reportSummary?.avg_first_response_time ? `${Math.round(reportSummary.avg_first_response_time / 60)}m` : '0m', color: 'text-amber-600' },
-                        { label: 'Mensagens Recebidas', value: reportSummary?.incoming_messages_count || 0, color: 'text-blue-600' }
-                      ].map((stat, idx) => (
-                        <div key={idx} className="bg-white border border-[#c5a059]/10 p-5 rounded-2xl shadow-sm">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</h4>
-                          <div className={`text-2xl font-serif font-bold ${stat.color}`}>{stat.value}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                        <div className="flex items-center justify-between mb-6">
-                          <h3 className="font-serif text-lg font-bold text-[#0a192f]">Volume de Demandas (7 dias)</h3>
-                          <TrendingUp className="w-4 h-4 text-[#c5a059]" />
-                        </div>
-                        <div className="h-64 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={reportDaily}>
-                              <defs>
-                                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#c5a059" stopOpacity={0.1}/>
-                                  <stop offset="95%" stopColor="#c5a059" stopOpacity={0}/>
-                                </linearGradient>
-                              </defs>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                              <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
-                              <YAxis stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
-                              <RechartsTooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #c5a05933', borderRadius: '8px', fontSize: '10px' }} />
-                              <Area type="monotone" dataKey="value" stroke="#c5a059" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-
-                      <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                        <h3 className="font-serif text-lg font-bold text-[#0a192f] mb-6 flex items-center gap-2">
-                          <Users className="w-5 h-5 text-[#c5a059]" />
-                          Distribuição
-                        </h3>
-                        <div className="space-y-6">
-                          {[
-                            { name: 'Gabinete Principal', value: 45, color: 'bg-[#0a192f]' },
-                            { name: 'Jurídico', value: 30, color: 'bg-[#c5a059]' },
-                            { name: 'Obras/Infra', value: 15, color: 'bg-slate-400' },
-                            { name: 'Saúde', value: 10, color: 'bg-emerald-500' }
-                          ].map((item, i) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
-                                <span>{item.name}</span>
-                                <span>{item.value}%</span>
-                              </div>
-                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${item.value}%` }} className={`h-full ${item.color}`} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {reportSubView === 'conversations' && (
-                  <div className="space-y-8">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-serif text-lg font-bold text-[#0a192f]">Conversas</h3>
-                          <span className="text-2xl font-serif font-bold text-[#0a192f]">331 <span className="text-[10px] text-emerald-600">▲ 2446%</span></span>
-                        </div>
-                        <div className="h-64">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={reportDaily}>
-                              <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                              <RechartsTooltip />
-                              <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                      <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-serif text-lg font-bold text-[#0a192f]">Mensagens Recebidas</h3>
-                          <span className="text-2xl font-serif font-bold text-[#0a192f]">269 <span className="text-[10px] text-emerald-600">▲ 1394%</span></span>
-                        </div>
-                        <div className="h-64">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={reportDaily.map(d => ({ ...d, messages: Math.floor(d.value * 4.5) }))}>
-                              <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                              <RechartsTooltip />
-                              <Bar dataKey="messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dados de Caixa de Entrada integrados */}
-                    <div className="bg-white rounded-3xl shadow-sm border border-[#c5a059]/10 overflow-hidden">
-                      <div className="p-6 border-b border-[#c5a059]/10 bg-[#fcfaf5]">
-                        <h3 className="font-serif text-lg font-bold text-[#0a192f]">Desempenho por Caixa de Entrada</h3>
-                      </div>
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="bg-[#fcfaf5] text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-[#c5a059]/10">
-                            <th className="px-6 py-4">Caixa de Entrada</th>
-                            <th className="px-6 py-4">Nº de Conversas</th>
-                            <th className="px-6 py-4">T. Médio Resposta</th>
-                            <th className="px-6 py-4">T. Médio Resolução</th>
-                            <th className="px-6 py-4 text-right">Resoluções</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {[{name: 'Câmara de SJB', id: 1}, {name: 'Ouvidoria Digital', id: 2}].map((item: any, i: number) => (
-                            <tr key={i} className="hover:bg-[#fcfaf5]/50 transition-all">
-                              <td className="px-6 py-5 text-xs font-bold text-[#0a192f]">{item.name}</td>
-                              <td className="px-6 py-5 text-xs font-mono">{Math.floor(Math.random() * 300 + 100)}</td>
-                              <td className="px-6 py-5 text-xs">1 Hr 18 Min</td>
-                              <td className="px-6 py-5 text-xs">5 Hr 47 Min</td>
-                              <td className="px-6 py-5 text-right text-xs font-bold text-[#0a192f]">{Math.floor(Math.random() * 200 + 80)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+              {/* Grid de Métricas Diretas */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {[
+                  { label: 'Volume Total', value: reportSummary?.conversations_count || 0, color: 'text-[#0a192f]' },
+                  { label: 'Resolvidos', value: reportSummary?.resolutions_count || 0, color: 'text-emerald-600' },
+                  { label: 'T. Médio Resposta', value: reportSummary?.avg_first_response_time ? `${Math.round(reportSummary.avg_first_response_time / 60)}m` : '0m', color: 'text-amber-600' },
+                  { label: 'Mensagens Recebidas', value: reportSummary?.incoming_messages_count || 0, color: 'text-blue-600' }
+                ].map((stat, idx) => (
+                  <div key={idx} className="bg-white border border-[#c5a059]/10 p-5 rounded-2xl shadow-sm">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</h4>
+                    <div className={`text-2xl font-serif font-bold ${stat.color}`}>{stat.value}</div>
                   </div>
-                )}
+                ))}
+              </div>
 
-                {reportSubView === 'teams' && (
-                  <div className="bg-white rounded-3xl shadow-sm border border-[#c5a059]/10 overflow-hidden">
-                    <div className="p-6 border-b border-[#c5a059]/10 bg-[#fcfaf5]">
-                      <p className="text-xs text-slate-500 italic">
-                        Tenha uma visão geral do desempenho dos seus times com métricas essenciais.
-                      </p>
-                    </div>
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-[#fcfaf5] text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-[#c5a059]/10">
-                          <th className="px-6 py-4">Time</th>
-                          <th className="px-6 py-4">Nº de Conversas</th>
-                          <th className="px-6 py-4">Tempo Médio de Primeira Resposta</th>
-                          <th className="px-6 py-4">Tempo Médio de Resolução</th>
-                          <th className="px-6 py-4 text-right">Contagem de Resolução</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {(teams.length > 0 ? teams : [{name: 'Gabinete Principal', id: 1}, {name: 'Jurídico', id: 2}]).map((item: any, i: number) => (
-                          <tr key={i} className="hover:bg-[#fcfaf5]/50 transition-all">
-                            <td className="px-6 py-5 text-xs font-bold text-[#0a192f]">{item.name}</td>
-                            <td className="px-6 py-5 text-xs font-mono">{Math.floor(Math.random() * 200 + 50)}</td>
-                            <td className="px-6 py-5 text-xs">7 Min 24 Sec</td>
-                            <td className="px-6 py-5 text-xs">11 Min 50 Sec</td>
-                            <td className="px-6 py-5 text-right text-xs font-bold text-[#0a192f]">{Math.floor(Math.random() * 100 + 40)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* Seção de Dados e Ranking */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Gráfico de Tendência */}
+                <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-serif text-lg font-bold text-[#0a192f]">Volume de Demandas (7 dias)</h3>
+                    <TrendingUp className="w-4 h-4 text-[#c5a059]" />
                   </div>
-                )}
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={reportDaily}>
+                        <defs>
+                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#c5a059" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#c5a059" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
+                        <RechartsTooltip 
+                          contentStyle={{ backgroundColor: '#fff', border: '1px solid #c5a05933', borderRadius: '8px', fontSize: '10px' }}
+                        />
+                        <Area type="monotone" dataKey="value" stroke="#c5a059" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-                {reportSubView === 'agents' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Ranking de Agentes / Equipes */}
+                <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
+                  <h3 className="font-serif text-lg font-bold text-[#0a192f] mb-6 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-[#c5a059]" />
+                    Distribuição por Gabinete
+                  </h3>
+                  <div className="space-y-6">
                     {[
-                      { name: 'Ver. João Moonsix', conversations: 45, csat: '4.9', status: 'online' },
-                      { name: 'Ana Souza (Gabinete)', conversations: 32, csat: '4.8', status: 'offline' },
-                      { name: 'Carlos Lima (Jurídico)', conversations: 28, csat: '4.7', status: 'online' }
-                    ].map((agent, i) => (
-                      <div key={i} className="bg-white border border-[#c5a059]/10 p-6 rounded-2xl shadow-sm">
-                        <div className="flex items-center gap-4 mb-4">
-                          <div className="w-12 h-12 rounded-full bg-[#0a192f]/5 flex items-center justify-center text-[#0a192f] font-bold text-lg">
-                            {agent.name.charAt(0)}
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-bold text-[#0a192f]">{agent.name}</h4>
-                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              agent.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'
-                            }`}>
-                              {agent.status}
-                            </span>
-                          </div>
+                      { name: 'Gabinete Principal', value: 45, color: 'bg-[#0a192f]' },
+                      { name: 'Jurídico', value: 30, color: 'bg-[#c5a059]' },
+                      { name: 'Obras/Infra', value: 15, color: 'bg-slate-400' },
+                      { name: 'Saúde', value: 10, color: 'bg-emerald-500' }
+                    ].map((item, i) => (
+                      <div key={i} className="space-y-2">
+                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
+                          <span>{item.name}</span>
+                          <span>{item.value}%</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-4">
-                          <div>
-                            <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Conversas</p>
-                            <p className="text-lg font-serif font-bold text-[#0a192f]">{agent.conversations}</p>
-                          </div>
-                          <div>
-                            <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Satisfação</p>
-                            <p className="text-lg font-serif font-bold text-emerald-600">{agent.csat}/5</p>
-                          </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${item.value}%` }}
+                            className={`h-full ${item.color}`}
+                          />
                         </div>
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
+              </div>
 
-                {(['labels', 'csat', 'sla', 'bots'].includes(reportSubView)) && (
-                  <div className="bg-white rounded-3xl shadow-sm border border-[#c5a059]/10 overflow-hidden">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-[#fcfaf5] text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-[#c5a059]/10">
-                          <th className="px-6 py-4">
-                            {reportSubView === 'labels' && 'Etiqueta'}
-                            {reportSubView === 'csat' && 'Agente'}
-                            {reportSubView === 'sla' && 'Gabinete'}
-                            {reportSubView === 'bots' && 'Automação'}
-                          </th>
-                          <th className="px-6 py-4">
-                            {reportSubView === 'labels' && 'Volume'}
-                            {reportSubView === 'csat' && 'Avaliações'}
-                            {reportSubView === 'sla' && 'Total Conversas'}
-                            {reportSubView === 'bots' && 'Interações'}
-                          </th>
-                          <th className="px-6 py-4">
-                            {reportSubView === 'labels' && 'Resolução'}
-                            {reportSubView === 'csat' && 'Média'}
-                            {reportSubView === 'sla' && 'Dentro do Prazo'}
-                            {reportSubView === 'bots' && 'Resolvidos'}
-                          </th>
-                          <th className="px-6 py-4 text-right">
-                            {reportSubView === 'labels' && 'Tendência'}
-                            {reportSubView === 'csat' && 'Performance'}
-                            {reportSubView === 'sla' && '% SLA'}
-                            {reportSubView === 'bots' && 'Eficácia'}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[1, 2, 3].map((item, i) => (
-                          <tr key={i} className="hover:bg-[#fcfaf5]/50 transition-all">
-                            <td className="px-6 py-5 text-xs font-bold text-[#0a192f]">
-                              {reportSubView === 'labels' && ['Obras', 'Saúde', 'Iluminação'][i]}
-                              {reportSubView === 'csat' && ['João M.', 'Ana S.', 'Carlos L.'][i]}
-                              {reportSubView === 'sla' && ['Gabinete 01', 'Gabinete 02', 'Jurídico'][i]}
-                              {reportSubView === 'bots' && ['Triagem Inicial', 'FAQ Automático', 'Protocolo'][i]}
-                            </td>
-                            <td className="px-6 py-5 text-xs font-mono">{Math.floor(Math.random() * 100 + 20)}</td>
-                            <td className="px-6 py-5 text-xs">
-                              {reportSubView === 'labels' && '85%'}
-                              {reportSubView === 'csat' && '4.8/5'}
-                              {reportSubView === 'sla' && '92%'}
-                              {reportSubView === 'bots' && '65%'}
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              <span className="text-[10px] font-black uppercase text-emerald-600">▲ {Math.floor(Math.random() * 15 + 5)}%</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* Métricas de Eficiência Adicionais */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Média de Resolução</h4>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-serif font-bold text-[#0a192f]">
+                      {reportSummary?.avg_resolution_time ? Math.round(reportSummary.avg_resolution_time / 3600) : 0}h
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600">-15% vs mês anterior</span>
                   </div>
-                )}
+                </div>
+                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Taxa de Satisfação</h4>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-serif font-bold text-[#0a192f]">4.8/5</span>
+                    <span className="text-[10px] font-bold text-emerald-600">Excelente</span>
+                  </div>
+                </div>
+                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Resolvidos na 1ª Resposta</h4>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-serif font-bold text-[#0a192f]">72%</span>
+                    <span className="text-[10px] font-bold text-[#c5a059]">Meta: 80%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rodapé de Controle */}
+              <div className="flex items-center justify-between pt-4 border-t border-[#c5a059]/10 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                <span>Câmara Municipal de São João da Barra</span>
+                <span>Relatório Gerado em: {format(new Date(), 'dd/MM/yyyy HH:mm')}</span>
               </div>
             </div>
-          ) : selectedMessage ? (
+          </div>
+        ) : selectedMessage ? (
           <>
             <div className="h-20 border-b border-[#c5a059]/20 flex items-center justify-between px-10 bg-white shadow-sm">
               <div className="flex items-center gap-5">
@@ -1232,13 +1033,7 @@ export default function PortalVereador() {
                 <div className="relative">
                   <div className="w-14 h-14 rounded-xl overflow-hidden bg-white/10 border border-[#c5a059]/30">
                     {selectedMessage.contact_avatar ? (
-                      <Image 
-                        src={selectedMessage.contact_avatar} 
-                        alt="" 
-                        fill 
-                        className="object-cover" 
-                        referrerPolicy="no-referrer"
-                      />
+                      <img src={selectedMessage.contact_avatar} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xl font-serif font-bold text-[#c5a059]">
                         {selectedMessage.contact_name?.[0] || 'P'}
