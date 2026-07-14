@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { 
   MessageSquare, 
   Filter,
@@ -71,7 +70,7 @@ export default function PortalVereador() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all'>('all');
+  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all'>('mine');
   const [mainView, setMainView] = useState<'all' | 'vereadores' | 'duvidas' | 'reclamacoes' | 'resolved' | 'reports'>('all');
   const [lastSync, setLastSync] = useState<Date>(new Date());
   const [inboxFilter, setInboxFilter] = useState<number | null>(null);
@@ -430,24 +429,25 @@ export default function PortalVereador() {
 
   return (
     <div className="flex h-screen bg-[#f4f1ea] text-[#0a192f] font-sans selection:bg-[#c5a059]/30 overflow-hidden">
+      {/* Sidebar Left - Professional Navy */}
+      <div className="w-16 bg-[#0a192f] border-r border-[#c5a059]/20 flex flex-col items-center py-6 gap-8 z-30 shadow-2xl">
+        <div className="w-10 h-10 bg-[#c5a059] rounded-lg flex items-center justify-center text-[#0a192f] font-serif font-bold text-lg shadow-lg border border-[#c5a059]/50">
+          SJB
+        </div>
+        <div className="flex flex-col gap-4">
+          <button className="p-3 text-[#c5a059] bg-[#c5a059]/10 rounded-xl border border-[#c5a059]/20 shadow-inner">
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button className="p-3 text-slate-500 hover:text-[#c5a059] transition-colors">
+            <Users className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
       {/* Sidebar Main - Institutional Navigation */}
       <div className="w-72 bg-[#0a192f] border-r border-[#c5a059]/10 flex flex-col z-20 shadow-xl">
         <div className="p-8 border-b border-[#c5a059]/10 space-y-6">
-          <div className="text-center flex flex-col items-center">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 1, ease: "easeOut" }}
-              className="mb-4 relative w-24 h-24"
-            >
-              <Image 
-                src="/brasao_principal.png" 
-                alt="Brasão Câmara Municipal" 
-                fill
-                className="object-contain opacity-40 mix-blend-soft-light"
-                referrerPolicy="no-referrer"
-              />
-            </motion.div>
+          <div className="text-center">
             <h1 className="font-serif text-lg font-bold text-[#c5a059] leading-tight tracking-wide uppercase">
               Câmara Municipal
             </h1>
@@ -614,11 +614,30 @@ export default function PortalVereador() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center">
-            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0a192f] border-b-2 border-[#c5a059] pb-1">
-              CAIXA DE ENTRADA CÂMARA
-            </h4>
-          </div>
+          {['all', 'vereadores'].includes(mainView) ? (
+            <div className="flex items-center gap-6">
+              {[
+                { id: 'mine', label: 'Meus Protocolos' },
+                { id: 'unassigned', label: 'Sem Atribuição' },
+                { id: 'all', label: 'Toda Câmara' }
+              ].map((tab) => (
+                <button 
+                  key={tab.id}
+                  onClick={() => setInboxSubFilter(tab.id as any)}
+                  className={`pb-3 text-[10px] font-black uppercase tracking-[0.1em] transition-all relative ${inboxSubFilter === tab.id ? 'text-[#0a192f]' : 'text-slate-400'}`}
+                >
+                  {tab.label}
+                  {inboxSubFilter === tab.id && <motion.div layoutId="subfilter" className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a059] rounded-full" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex-1 flex justify-center">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0a192f] border-b-2 border-[#c5a059] pb-1">
+                Meus Protocolos
+              </h4>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#fcfaf5]">
@@ -654,7 +673,7 @@ export default function PortalVereador() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 mb-3 line-clamp-2 leading-relaxed italic opacity-80">
-                      &quot;{msg.message}&quot;
+                      "{msg.message}"
                     </p>
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex flex-wrap gap-1.5">
@@ -1246,13 +1265,7 @@ export default function PortalVereador() {
                 <div className="relative">
                   <div className="w-14 h-14 rounded-xl overflow-hidden bg-white/10 border border-[#c5a059]/30">
                     {selectedMessage.contact_avatar ? (
-                      <Image 
-                        src={selectedMessage.contact_avatar} 
-                        alt="" 
-                        fill 
-                        className="object-cover" 
-                        referrerPolicy="no-referrer"
-                      />
+                      <img src={selectedMessage.contact_avatar} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xl font-serif font-bold text-[#c5a059]">
                         {selectedMessage.contact_name?.[0] || 'P'}
