@@ -17,21 +17,29 @@ export async function GET() {
 
     console.log(`Encontradas ${conversations.length} conversas no total`);
 
-    const results = [];
-    for (const conv of conversations) {
+    const results = await Promise.all(conversations.map(async (conv) => {
       try {
-        const messagesData = await getChatwootMessages(conv.id);
-        const messages = messagesData.payload || messagesData;
+        let lastMessage = conv.last_non_activity_message;
         
-        let lastMessage = null;
-        if (Array.isArray(messages) && messages.length > 0) {
-          lastMessage = messages[messages.length - 1];
+        if (!lastMessage) {
+          const messagesData = await getChatwootMessages(conv.id);
+          const messages = messagesData.payload || messagesData;
+          if (Array.isArray(messages) && messages.length > 0) {
+            lastMessage = messages[messages.length - 1];
+          }
         }
-
+        
         const content = lastMessage?.content || 'Conversa sem mensagens';
         
         let analysis: any = { sentiment: 'neutro', priority: 'média', category: 'Geral', summary: 'Sem análise', suggested_response: '' };
-        if (lastMessage && lastMessage.message_type === 'incoming') {
+        
+        // Só analisamos com IA se for uma mensagem nova de entrada e ainda não tiver etiquetas de categoria (theme)
+        // Isso economiza chamadas de API e tempo
+        const hasAnalysisLabel = conv.labels && conv.labels.some((l: string) => 
+          ['Geral', 'Infraestrutura', 'Saúde', 'Educação', 'Segurança', 'Outros'].includes(l)
+        );
+
+        if (lastMessage && lastMessage.message_type === 'incoming' && !hasAnalysisLabel) {
           try {
             const aiAnalysis = await analyzeMessage(lastMessage.content);
             analysis = { ...analysis, ...aiAnalysis };
@@ -40,7 +48,6 @@ export async function GET() {
           }
         }
         
-        const sourceName = conv.meta?.sender?.name || 'Chatwoot';
         const teamName = conv.meta?.team?.name || 'Inbox #' + conv.inbox_id;
         const assignee = conv.meta?.assignee?.name || null;
 
@@ -53,7 +60,7 @@ export async function GET() {
           createdAt = new Date(timestamp).toISOString();
         }
 
-        results.push({ 
+        return { 
           id: conv.id,
           conversation_id: conv.id,
           source: teamName, 
@@ -61,6 +68,7 @@ export async function GET() {
           assignee: assignee,
           labels: conv.labels || [],
           inbox_id: conv.inbox_id,
+          team_id: conv.meta?.team?.id,
           custom_attributes: conv.custom_attributes || {},
           contact_name: conv.meta?.sender?.name || 'Cidadão',
           contact_id: conv.meta?.sender?.id,
@@ -72,15 +80,19 @@ export async function GET() {
           suggested_response: analysis.suggested_response || '',
           created_at: createdAt,
           updated_at: new Date().toISOString()
-        });
+        };
       } catch (convError) {
         console.error(`Erro ao processar conversa ${conv.id}:`, convError);
+        return null;
       }
-    }
+    }));
+    
+    // Remove nulls de falhas individuais
+    const filteredResults = results.filter(r => r !== null);
     
     return NextResponse.json({ 
       message: 'Sincronização concluída',
-      messages: results
+      messages: filteredResults
     });
   } catch (error: any) {
     console.error('Chatwoot Sync Error:', error);

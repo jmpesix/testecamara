@@ -9,6 +9,7 @@ export interface Message {
   protocol?: string;
   contact_id?: number;
   contact_name?: string;
+  contact_avatar?: string;
   contact_phone?: string;
   contact_email?: string;
   message: string;
@@ -25,6 +26,7 @@ export interface Message {
   assignee?: string | null;
   labels?: string[];
   inbox_id?: number;
+  team_id?: number;
   custom_attributes?: Record<string, any>;
   data_processamento?: string;
   created_at: string;
