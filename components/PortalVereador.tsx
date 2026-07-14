@@ -422,7 +422,7 @@ export default function PortalVereador() {
     if (inboxSubFilter === 'unassigned') return !msg.assignee || msg.assignee === 'Não atribuído';
     
     return true;
-  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
   const availableInboxes = Array.from(new Set(messages.map(m => m.inbox_id))).filter(Boolean);
 
