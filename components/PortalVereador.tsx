@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { 
   MessageSquare, 
   Filter,
@@ -41,7 +42,8 @@ import {
   ShieldAlert,
   Crown,
   ChevronRight,
-  Tag
+  Tag,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -460,19 +462,28 @@ export default function PortalVereador() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleAnalyze = async (msg: Message) => {
+  const [showAiMenu, setShowAiMenu] = useState(false);
+  const [aiInfo, setAiInfo] = useState<string | null>(null);
+
+  const handleAnalyze = async (msg: Message, mode: 'suggest' | 'info' = 'suggest') => {
     setIsAnalyzing(true);
+    setShowAiMenu(false);
+    setAiInfo(null);
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg.message })
+        body: JSON.stringify({ 
+          message: msg.message,
+          mode 
+        })
       });
       const data = await response.json();
-      if (data.analysis?.suggested_response) {
-        setAiSuggestion(data.analysis.suggested_response);
-      } else {
+      
+      if (mode === 'suggest') {
         setAiSuggestion(data.suggested_response);
+      } else if (mode === 'info') {
+        setAiInfo(data.info);
       }
     } catch (error) {
       console.error('Erro ao analisar:', error);
@@ -903,7 +914,7 @@ export default function PortalVereador() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 mb-3 line-clamp-2 leading-relaxed italic opacity-80">
-                      "{msg.message}"
+                      &quot;{msg.message}&quot;
                     </p>
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex flex-wrap gap-1.5">
@@ -1194,16 +1205,57 @@ export default function PortalVereador() {
                         <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-[#c5a059]/30 transition-all group">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-2xl bg-[#0a192f] flex items-center justify-center font-serif font-bold text-[#c5a059] border border-[#c5a059]/20 shadow-inner group-hover:scale-105 transition-transform">
-                              {team.name ? team.name[0] : 'T'}
+                              {(() => {
+                                const id = Number(team.id);
+                                const teamFromState = teams.find(t => Number(t.id) === id);
+                                const rawName = team.name || teamFromState?.name || '';
+                                const cleanName = rawName.replace(/^(vereador|vereadora|gabinete)\s*:?\s*/i, '').trim();
+                                
+                                if (id === 1) return 'S'; // Suporte
+                                if (id === 2) return 'D'; // Dúvidas
+                                if (id === 3) return 'O'; // Ouvidoria
+                                return cleanName ? cleanName[0].toUpperCase() : 'T';
+                              })()}
                             </div>
                             <div>
                               <h4 className="font-serif text-lg font-bold text-[#0a192f]">
-                                {team.name === 'vereadores' ? 'Gabinete Legislativo (Vereadores)' :
-                                 team.name === 'duvidas e informações' ? 'Dúvidas e Informações' :
-                                 team.name === 'reclamações' ? 'Ouvidoria de Reclamações' :
-                                 team.name || `Equipe Técnica (ID ${team.id || i})`}
+                                {(() => {
+                                  const id = Number(team.id);
+                                  const teamFromState = teams.find(t => Number(t.id) === id);
+                                  const rawName = team.name || teamFromState?.name || '';
+                                  const lowerName = rawName.toLowerCase();
+
+                                  if (id === 1) return 'Suporte: Equipe Técnica';
+                                  if (id === 2 || lowerName.includes('duvida') || lowerName.includes('informação')) return 'Dúvidas e Informações';
+                                  if (id === 3 || lowerName.includes('reclamação') || lowerName.includes('ouvidoria')) return 'Ouvidoria de Reclamações';
+                                  if (lowerName === 'vereadores') return 'Gabinete Legislativo Geral';
+                                  
+                                  // Limpa o nome removendo termos indesejados
+                                  const cleanName = rawName.replace(/^(vereador|vereadora|gabinete)\s*:?\s*/i, '').trim();
+                                  
+                                  // Capitalização Inteligente (Title Case)
+                                  const capitalized = cleanName
+                                    .split(' ')
+                                    .map((word: string, index: number) => {
+                                      const lowerWord = word.toLowerCase();
+                                      const prepositions = ['de', 'da', 'do', 'das', 'dos'];
+                                      if (index !== 0 && prepositions.includes(lowerWord)) return lowerWord;
+                                      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                                    })
+                                    .join(' ');
+
+                                  if (!capitalized) return 'Equipe Técnica';
+                                  return `Gabinete: ${capitalized}`;
+                                })()}
                               </h4>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-[#c5a059]">Atuação Legislativa</p>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-[#c5a059]">
+                                {(() => {
+                                  const name = (team.name || '').toLowerCase();
+                                  const id = Number(team.id);
+                                  const isApoio = id <= 3 || name.includes('suporte') || name.includes('ouvidoria');
+                                  return isApoio ? 'Apoio Legislativo' : 'Vereador';
+                                })()}
+                              </p>
                             </div>
                           </div>
                           
@@ -1340,7 +1392,7 @@ export default function PortalVereador() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Fonte Oficial: Câmara de SJB</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 relative">
                 <button 
                   onClick={() => handleUpdateStatus(selectedMessage.status === 'resolved' ? 'open' : 'resolved')}
                   disabled={isUpdatingStatus}
@@ -1353,14 +1405,48 @@ export default function PortalVereador() {
                   {isUpdatingStatus ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
                   {selectedMessage.status === 'resolved' ? 'Reativar Protocolo' : 'Arquivar Documento'}
                 </button>
-                <button 
-                  onClick={() => handleAnalyze(selectedMessage)}
-                  disabled={isAnalyzing}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-[#0a192f] border border-[#c5a059]/30 text-[#c5a059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#152a4a] transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 group"
-                >
-                  <Sparkles className={`w-4 h-4 group-hover:animate-pulse ${isAnalyzing ? 'animate-pulse' : ''}`} />
-                  {isAnalyzing ? 'Analisando...' : 'Consultar IA'}
-                </button>
+                
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowAiMenu(!showAiMenu)}
+                    disabled={isAnalyzing}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#0a192f] border border-[#c5a059]/30 text-[#c5a059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#152a4a] transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 group"
+                  >
+                    <Sparkles className={`w-4 h-4 group-hover:animate-pulse ${isAnalyzing ? 'animate-pulse' : ''}`} />
+                    {isAnalyzing ? 'Processando...' : 'Consultar IA'}
+                  </button>
+                  
+                  {showAiMenu && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-[#c5a059]/20 p-2 z-50 animate-in fade-in slide-in-from-top-2">
+                      <p className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100 mb-1">Assistente Legislativa SJB</p>
+                      <button 
+                        onClick={() => handleAnalyze(selectedMessage, 'suggest')}
+                        className="w-full text-left px-4 py-3 hover:bg-[#f4f1ea] rounded-xl transition-colors flex items-center gap-3 group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-[#0a192f]/5 flex items-center justify-center text-[#0a192f]">
+                          <MessageSquare className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-[#0a192f]">Sugerir Resposta Oficial</p>
+                          <p className="text-[9px] text-slate-500">Baseado no contexto da cidade</p>
+                        </div>
+                      </button>
+                      <button 
+                        onClick={() => handleAnalyze(selectedMessage, 'info')}
+                        className="w-full text-left px-4 py-3 hover:bg-[#f4f1ea] rounded-xl transition-colors flex items-center gap-3 group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-[#c5a059]/10 flex items-center justify-center text-[#c5a059]">
+                          <Search className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-[#0a192f]">Análise Técnica / Info</p>
+                          <p className="text-[9px] text-slate-500">Orientações para o vereador</p>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <button 
                   onClick={() => setShowContactDetails(!showContactDetails)}
                   className={`p-3 rounded-xl transition-all border ${showContactDetails ? 'bg-[#c5a059]/20 border-[#c5a059]/30 text-[#0a192f]' : 'text-slate-400 hover:bg-slate-100 border-transparent'}`}
@@ -1371,6 +1457,31 @@ export default function PortalVereador() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-12 space-y-8 custom-scrollbar bg-[#f4f1ea]">
+              {aiInfo && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border-2 border-dashed border-[#c5a059]/30 p-8 rounded-3xl shadow-xl mb-8 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 p-4">
+                    <button onClick={() => setAiInfo(null)} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="flex items-start gap-6">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0a192f] flex items-center justify-center text-[#c5a059] shadow-lg shrink-0">
+                      <Search className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="font-serif text-xl font-bold text-[#0a192f] mb-3">Análise Técnica da IA</h3>
+                      <p className="text-slate-600 leading-relaxed text-sm italic">
+                        {aiInfo}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {loadingHistory ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="w-12 h-12 border-4 border-[#c5a059]/20 border-t-[#c5a059] rounded-full animate-spin" />
@@ -1433,32 +1544,32 @@ export default function PortalVereador() {
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="bg-emerald-50 border border-emerald-200/50 rounded-[40px] p-10 shadow-inner"
+                    className="bg-white border border-[#c5a059]/30 rounded-[40px] p-10 shadow-2xl"
                   >
-                    <div className="flex items-center gap-4 mb-6 text-emerald-700">
-                      <div className="p-3 bg-emerald-500 rounded-2xl text-white shadow-xl shadow-emerald-500/20">
+                    <div className="flex items-center gap-4 mb-6 text-[#0a192f]">
+                      <div className="p-3 bg-[#0a192f] rounded-2xl text-[#c5a059] shadow-xl shadow-blue-900/20 border border-[#c5a059]/30">
                         <Sparkles className="w-6 h-6" />
                       </div>
                       <div>
-                        <h4 className="font-serif font-bold text-xl">Recomendação do Painel do Vereador IA</h4>
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Análise de Conteúdo e Contexto</p>
+                        <h4 className="font-serif font-bold text-xl">Assistente do Gabinete (SJB)</h4>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#c5a059]">Sugestão Contextualizada para São João da Barra</p>
                       </div>
                     </div>
-                    <p className="text-sm text-emerald-900 leading-relaxed italic mb-8 border-l-4 border-emerald-500/30 pl-6">
+                    <p className="text-sm text-slate-700 leading-relaxed italic mb-8 border-l-4 border-[#c5a059]/30 pl-6">
                       &quot;{aiSuggestion}&quot;
                     </p>
                     <div className="flex gap-4">
                       <button 
                         onClick={() => { setReplyText(aiSuggestion); setAiSuggestion(null); }}
-                        className="px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg"
+                        className="px-10 py-4 bg-[#0a192f] text-[#c5a059] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#152a4a] transition-all shadow-2xl shadow-blue-900/20 border border-[#c5a059]/30"
                       >
-                        Aplicar Transcrição
+                        Aplicar Sugestão
                       </button>
                       <button 
                         onClick={() => setAiSuggestion(null)}
-                        className="px-8 py-3 bg-white border border-emerald-200 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all"
+                        className="px-10 py-4 bg-white border border-slate-200 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
                       >
-                        Ignorar Sugestão
+                        Ignorar
                       </button>
                     </div>
                   </motion.div>
@@ -1585,7 +1696,14 @@ export default function PortalVereador() {
                 <div className="relative">
                   <div className="w-14 h-14 rounded-xl overflow-hidden bg-white/10 border border-[#c5a059]/30">
                     {selectedMessage.contact_avatar ? (
-                      <img src={selectedMessage.contact_avatar} alt="" className="w-full h-full object-cover" />
+                      <Image 
+                        src={selectedMessage.contact_avatar} 
+                        alt="" 
+                        width={56}
+                        height={56}
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xl font-serif font-bold text-[#c5a059]">
                         {selectedMessage.contact_name?.[0] || 'P'}
