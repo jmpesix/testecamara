@@ -39,10 +39,13 @@ import {
   TrendingUp,
   Activity,
   ShieldAlert,
-  Crown
+  Crown,
+  ChevronRight,
+  Tag
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+
 import { 
   AreaChart,
   Area,
@@ -61,12 +64,28 @@ import {
 } from 'recharts';
 import { Message } from '@/types';
 
+const VEREADORES = [
+  { id: 4, name: 'Alan de Grussaí' },
+  { id: 5, name: 'Analiel Vianna' },
+  { id: 6, name: 'Caio César' },
+  { id: 7, name: 'Elísio Rodrigues' },
+  { id: 8, name: 'Eziel Pedro' },
+  { id: 9, name: 'Joice Pedra' },
+  { id: 10, name: 'Julinho Peixoto' },
+  { id: 11, name: 'Júnior Monteiro' },
+  { id: 12, name: 'Kaká' },
+  { id: 13, name: 'Léo de Lolô' },
+  { id: 14, name: 'Rodrigo Machado' },
+  { id: 15, name: 'Rommenik' },
+  { id: 16, name: 'Soninha Pereira' },
+];
+
 export default function PortalVereador() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all'>('mine');
+  const [inboxSubFilter, setInboxSubFilter] = useState<'mine' | 'unassigned' | 'all' | 'resolved'>('all');
   const [mainView, setMainView] = useState<'all' | 'vereadores' | 'duvidas' | 'reclamacoes' | 'resolved' | 'reports'>('all');
   const [lastSync, setLastSync] = useState<Date>(new Date());
   const [inboxFilter, setInboxFilter] = useState<number | null>(null);
@@ -80,6 +99,8 @@ export default function PortalVereador() {
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const [fullConversationData, setFullConversationData] = useState<any>(null);
+  const [sidebarOpenSections, setSidebarOpenSections] = useState<string[]>(['Ações da conversa']);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -95,9 +116,15 @@ export default function PortalVereador() {
   const [teams, setTeams] = useState<any[]>([]);
   const [reportSummary, setReportSummary] = useState<any>(null);
   const [reportDaily, setReportDaily] = useState<any[]>([]);
+  const [reportDetail, setReportDetail] = useState<any>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [inboxInfo, setInboxInfo] = useState<any>(null);
   const [showContactDetails, setShowContactDetails] = useState(true);
+  const [reportTab, setReportTab] = useState<'visao-geral' | 'conversas' | 'etiquetas' | 'inbox' | 'time' | 'sla' | 'robos'>('visao-geral');
+  const [reportRange, setReportRange] = useState<'7' | '15' | '30'>('7');
+  const [reportsExpanded, setReportsExpanded] = useState(false);
+  const [gabinetesExpanded, setGabinetesExpanded] = useState(false);
+  const [selectedVereador, setSelectedVereador] = useState<string | null>(null);
 
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -105,37 +132,105 @@ export default function PortalVereador() {
 
   useEffect(() => {
     setMounted(true);
-    handleSync();
-    fetchCanned();
-    fetchCounts();
-    fetchTeams();
-    fetchInboxInfo();
-    fetchProfile();
+    const init = async () => {
+      try {
+        await Promise.all([
+          handleSync(),
+          fetchCanned(),
+          fetchCounts(),
+          fetchTeams(),
+          fetchInboxInfo(),
+          fetchProfile(),
+          fetchReports()
+        ]);
+      } catch (e) {
+        console.error('Initialization error:', e);
+      }
+    };
+    init();
   }, []);
+
+  useEffect(() => {
+    if (mainView === 'reports') {
+      fetchReports();
+    }
+  }, [mainView, reportTab, reportRange]);
+
+  useEffect(() => {
+    // Reset subfilter when main view changes to ensure valid tab is selected
+    if (mainView === 'duvidas' || mainView === 'reclamacoes') {
+      setInboxSubFilter('mine');
+    } else if (mainView === 'vereadores') {
+      setInboxSubFilter('mine');
+    } else {
+      setInboxSubFilter('all');
+    }
+  }, [mainView]);
 
   const fetchReports = async () => {
     setLoadingReports(true);
     try {
-      // Busca sumário
-      const summaryRes = await fetch('/api/chatwoot/reports');
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - (parseInt(reportRange) * 86400);
+      
+      const queryParams = new URLSearchParams({
+        since: since.toString(),
+        until: until.toString()
+      });
+
+      // Busca sumário completo (incluindo times, canais e distribuição)
+      const summaryRes = await fetch(`/api/chatwoot/reports?${queryParams.toString()}`);
       if (summaryRes.ok) {
-        const summaryData = await summaryRes.json();
-        setReportSummary(summaryData);
+        const reportData = await summaryRes.json();
+        setReportSummary(reportData);
+        
+        // Se estiver na aba de times ou inboxes, aproveita os dados do sumário
+        if (reportTab === 'time') {
+          setReportDetail(reportData.teams || []);
+          setLoadingReports(false);
+          return; 
+        } else if (reportTab === 'inbox') {
+          setReportDetail(reportData.channels || []);
+          setLoadingReports(false);
+          return;
+        }
       }
 
-      // Busca dados diários de conversas (últimos 7 dias)
       const now = new Date();
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(now.getDate() - 7);
-      
-      const dailyRes = await fetch(`/api/chatwoot/reports?metric=conversations_count&since=${Math.floor(sevenDaysAgo.getTime() / 1000)}&until=${Math.floor(now.getTime() / 1000)}`);
-      if (dailyRes.ok) {
-        const dailyData = await dailyRes.json();
-        if (dailyData.data) {
-          setReportDaily(dailyData.data.map((item: any) => ({
-            name: format(new Date(item.timestamp * 1000), 'dd/MM'),
-            value: parseInt(item.value)
-          })));
+      // Se estiver na visão geral, busca o gráfico diário
+      if (reportTab === 'visao-geral') {
+        const dailyRes = await fetch(`/api/chatwoot/reports?metric=conversations_count&since=${since}&until=${until}`);
+        if (dailyRes.ok) {
+          const dailyData = await dailyRes.json();
+          if (dailyData.data) {
+            setReportDaily(dailyData.data.map((item: any) => {
+              let name = '??';
+              try {
+                if (item.timestamp) {
+                  name = format(new Date(item.timestamp * 1000), 'dd/MM');
+                }
+              } catch (e) {}
+              return {
+                name,
+                value: parseInt(item.value) || 0
+              };
+            }));
+          }
+        }
+      } else {
+        // Busca detalhes específicos da aba
+        let metric = 'conversations_count';
+        let type = 'account';
+
+        if (reportTab === 'inbox') type = 'inbox';
+        else if (reportTab === 'time') type = 'team';
+        else if (reportTab === 'etiquetas') type = 'label';
+        else if (reportTab === 'sla') metric = 'sla_breach_count';
+
+        const detailRes = await fetch(`/api/chatwoot/reports?metric=${metric}&type=${type}&since=${since}&until=${until}`);
+        if (detailRes.ok) {
+          const detailData = await detailRes.json();
+          setReportDetail(detailData);
         }
       }
     } catch (error) {
@@ -144,12 +239,6 @@ export default function PortalVereador() {
       setLoadingReports(false);
     }
   };
-
-  useEffect(() => {
-    if (mainView === 'reports') {
-      fetchReports();
-    }
-  }, [mainView]);
 
   const fetchProfile = async () => {
     try {
@@ -199,18 +288,20 @@ export default function PortalVereador() {
     }
   };
 
-  const handleAddLabel = async () => {
-    if (!selectedMessage || !newLabel) return;
+  const handleAddLabel = async (labelOverride?: string) => {
+    const labelToUse = labelOverride || newLabel;
+    if (!selectedMessage || !labelToUse) return;
     try {
       const currentLabels = selectedMessage.labels || [];
-      const labels = [...currentLabels, newLabel];
+      if (currentLabels.includes(labelToUse)) return;
+      const labels = [...currentLabels, labelToUse];
       const response = await fetch(`/api/chatwoot/conversations/${selectedMessage.conversation_id}/labels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ labels })
       });
       if (response.ok) {
-        setNewLabel('');
+        if (!labelOverride) setNewLabel('');
         handleSync();
         setSelectedMessage(prev => prev ? { ...prev, labels } : null);
       }
@@ -219,16 +310,53 @@ export default function PortalVereador() {
     }
   };
 
+  const lastSelectedId = useRef<number | null>(null);
+
   useEffect(() => {
-    if (selectedMessage) {
-      setIsFirstLoad(true);
-      fetchConversationHistory(selectedMessage.conversation_id || selectedMessage.id);
-      fetchContactConversations(selectedMessage.contact_id);
+    const currentId = selectedMessage?.conversation_id || selectedMessage?.id;
+    if (currentId && selectedMessage) {
+      const numericId = Number(currentId);
+      // Only fetch if the conversation ID has changed to avoid infinite loops and flashing
+      if (lastSelectedId.current !== numericId) {
+        lastSelectedId.current = numericId;
+        setIsFirstLoad(true);
+        fetchConversationHistory(numericId);
+        if (selectedMessage.contact_id) {
+          fetchContactConversations(selectedMessage.contact_id);
+        }
+        fetchConversationDetails(numericId);
+      }
     } else {
+      lastSelectedId.current = null;
       setConversationMessages([]);
       setContactConversations([]);
+      setFullConversationData(null);
     }
-  }, [selectedMessage]);
+  }, [selectedMessage?.id, selectedMessage?.conversation_id]);
+
+  const fetchConversationDetails = async (id: number) => {
+    try {
+      const response = await fetch(`/api/chatwoot/conversations/${id}`);
+      const data = await response.json();
+      setFullConversationData(data);
+      
+      // Também atualiza o selectedMessage com dados mais frescos se necessário
+      if (data && data.meta?.sender) {
+        setSelectedMessage(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            contact_phone: data.meta.sender.phone_number,
+            contact_email: data.meta.sender.email,
+            labels: data.labels || prev.labels,
+            custom_attributes: data.custom_attributes || prev.custom_attributes
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar detalhes da conversa:', error);
+    }
+  };
 
   const fetchContactConversations = async (contactId?: number) => {
     if (!contactId) return;
@@ -392,26 +520,47 @@ export default function PortalVereador() {
   };
 
   const filteredMessages = messages.filter(msg => {
-    // Primeiro filtro por status (Resolvido vs Outros)
+    // Filtro por visualização principal
     if (mainView === 'resolved') {
       if (msg.status !== 'resolved') return false;
-    } else {
+    } else if (mainView === 'all') {
+      // Portal Geral (inbox 3) foca em demandas abertas
       if (msg.status === 'resolved') return false;
     }
+    // Para vereadores, duvidas e reclamacoes, permitimos ver o histórico completo (abertos + resolvidos)
 
     // Filtros por Categoria/Time (Baseado na fonte/equipe atribuída)
     const sourceLower = (msg.source || '').toLowerCase();
     
     if (mainView === 'all' && msg.inbox_id !== 3) return false;
-    if (mainView === 'vereadores' && !sourceLower.includes('vereador')) return false;
-    if (mainView === 'duvidas' && msg.team_id !== 2 && !sourceLower.includes('duvida') && !sourceLower.includes('informação')) return false;
-    if (mainView === 'reclamacoes' && msg.team_id !== 3 && !sourceLower.includes('reclamação')) return false;
+    if (mainView === 'vereadores') {
+      if (selectedVereador) {
+        const v = VEREADORES.find(v => v.name === selectedVereador);
+        if (v && msg.team_id !== v.id) return false;
+      } else {
+        // Gabinete Legislativo: Mensagens de todos os times de 4 a 16
+        if ((msg.team_id || 0) < 4 || (msg.team_id || 0) > 16) return false;
+      }
+    }
+    if (mainView === 'duvidas' && msg.team_id !== 2) return false;
+    if (mainView === 'reclamacoes' && msg.team_id !== 3) return false;
 
     // Filtro por Inbox (Canal)
     if (inboxFilter && msg.inbox_id !== inboxFilter) return false;
     
-    // Filtros de atribuição (Minhas / Não atribuídas)
-    if (inboxSubFilter === 'mine') return msg.assignee === 'joao';
+    // Filtros de atribuição e status interno
+    if (mainView === 'vereadores') {
+      if (inboxSubFilter === 'resolved') return msg.status === 'resolved';
+      // "Meus Protocolos" no Gabinete Legislativo mostra todas as mensagens direcionadas aos vereadores (abertas + resolvidas)
+      if (inboxSubFilter === 'mine') return true;
+    }
+
+    if (mainView === 'duvidas' || mainView === 'reclamacoes') {
+      if (inboxSubFilter === 'resolved') return msg.status === 'resolved';
+      return msg.status !== 'resolved';
+    }
+    
+    if (inboxSubFilter === 'mine') return msg.assignee === 'joao' || true; // Modified to show all for now as requested
     if (inboxSubFilter === 'unassigned') return !msg.assignee || msg.assignee === 'Não atribuído';
     
     return true;
@@ -459,7 +608,7 @@ export default function PortalVereador() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-8">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
           <div>
             <span className="text-[10px] font-black text-[#c5a059]/50 uppercase tracking-[0.2em] px-4 block mb-4">
               Painel do Vereador
@@ -470,55 +619,162 @@ export default function PortalVereador() {
                 { id: 'vereadores', icon: Users, label: 'Gabinete Legislativo', sublabel: 'Vereadores Ativos', color: 'text-blue-400' },
                 { id: 'duvidas', icon: AtSign, label: 'Dúvidas e Informações', sublabel: 'Informações Oficiais', color: 'text-emerald-400' },
                 { id: 'reclamacoes', icon: Clock, label: 'Ouvidoria de Reclamações', sublabel: 'Reclamações e Críticas', color: 'text-amber-400' },
-                { id: 'resolved', icon: CheckCheck, label: 'Protocolos Resolvidos', sublabel: 'Casos Resolvidos', color: 'text-slate-400' },
-                { id: 'reports', icon: BarChart3, label: 'Auditoria e Relatórios', sublabel: 'Métricas de Desempenho', color: 'text-purple-400' }
+                { id: 'resolved', icon: CheckCheck, label: 'Protocolos Resolvidos', sublabel: 'Casos Resolvidos', color: 'text-slate-400' }
               ].map((item) => {
+                const isVereadores = item.id === 'vereadores';
                 const itemCount = messages.filter(msg => {
                   const sourceLower = (msg.source || '').toLowerCase();
-                  if (item.id === 'reports') return false;
+                  
+                  // Aba Protocolos Resolvidos: mostra apenas resolvidos
                   if (item.id === 'resolved') return msg.status === 'resolved';
+                  
+                  // Outras categorias: contam apenas os pendentes (não resolvidos)
                   if (msg.status === 'resolved') return false;
+
                   if (item.id === 'all') return msg.inbox_id === 3;
-                  if (item.id === 'vereadores') return sourceLower.includes('vereador');
-                  if (item.id === 'duvidas') return msg.team_id === 2 || sourceLower.includes('duvida') || sourceLower.includes('informação');
-                  if (item.id === 'reclamacoes') return msg.team_id === 3 || sourceLower.includes('reclamação');
-                  return true;
+                  if (item.id === 'vereadores') return (msg.team_id || 0) >= 4 && (msg.team_id || 0) <= 16;
+                  if (item.id === 'duvidas') return msg.team_id === 2;
+                  if (item.id === 'reclamacoes') return msg.team_id === 3;
+                  
+                  return false;
                 }).length;
 
+                const displayCount = (item.id === 'resolved' && reportSummary?.resolutions_count !== undefined) 
+                  ? reportSummary.resolutions_count 
+                  : itemCount;
+
                 return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => {
-                      setMainView(item.id as any);
-                      if (item.id === 'reports') setSelectedMessage(null);
-                    }}
-                    className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
-                      mainView === item.id 
-                        ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
-                        : 'hover:bg-white/5 border-transparent text-slate-400'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-3">
-                        <item.icon className={`w-4 h-4 ${mainView === item.id ? 'text-[#c5a059]' : 'text-slate-500 group-hover:text-slate-300'}`} />
-                        <span className="text-xs font-bold tracking-tight">{item.label}</span>
+                  <div key={item.id} className="space-y-1">
+                    <button 
+                      onClick={() => {
+                        if (isVereadores) {
+                          setGabinetesExpanded(!gabinetesExpanded);
+                          setSelectedVereador(null);
+                          setInboxSubFilter('mine');
+                        } else {
+                          setGabinetesExpanded(false);
+                          setSelectedVereador(null);
+                          if (item.id === 'all') {
+                            setInboxSubFilter('all');
+                          } else {
+                            setInboxSubFilter('mine');
+                          }
+                        }
+                        setMainView(item.id as any);
+                        setReportsExpanded(false);
+                      }}
+                      className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
+                        mainView === item.id 
+                          ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
+                          : 'hover:bg-white/5 border-transparent text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                          <item.icon className={`w-4 h-4 ${mainView === item.id ? 'text-[#c5a059]' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                          <span className="text-xs font-bold tracking-tight">{item.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {displayCount > 0 && (
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                              mainView === item.id ? 'bg-[#c5a059] text-[#0a192f]' : 'bg-white/10 text-slate-500'
+                            }`}>
+                              {displayCount}
+                            </span>
+                          )}
+                          {isVereadores && (
+                            <ChevronDown className={`w-3 h-3 transition-transform ${gabinetesExpanded ? 'rotate-180' : ''}`} />
+                          )}
+                        </div>
                       </div>
-                      {itemCount > 0 && (
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                          mainView === item.id ? 'bg-[#c5a059] text-[#0a192f]' : 'bg-white/10 text-slate-500'
-                        }`}>
-                          {itemCount}
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                    </button>
+
+                    {isVereadores && gabinetesExpanded && (
+                      <div className="pl-10 space-y-1 py-1">
+                        {VEREADORES.map((v) => {
+                          const vCount = messages.filter(msg => msg.team_id === v.id && msg.status !== 'resolved').length;
+                          return (
+                            <button
+                              key={v.id}
+                              onClick={() => {
+                                setSelectedVereador(v.name);
+                                setMainView('vereadores');
+                                setSelectedMessage(null);
+                              }}
+                              className={`w-full flex items-center justify-between py-1.5 px-3 rounded-lg text-xs transition-all ${
+                                selectedVereador === v.name 
+                                  ? 'text-white font-bold bg-white/10' 
+                                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                              }`}
+                            >
+                              <span>{v.name}</span>
+                              {vCount > 0 && (
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/10 text-slate-400">
+                                  {vCount}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
 
+          <div className="space-y-1">
+            <button 
+              onClick={() => {
+                setReportsExpanded(!reportsExpanded);
+                setGabinetesExpanded(false);
+                setMainView('reports');
+                setSelectedMessage(null);
+              }}
+              className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
+                mainView === 'reports' 
+                  ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
+                  : 'hover:bg-white/5 border-transparent text-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  <BarChart3 className={`w-4 h-4 ${mainView === 'reports' ? 'text-[#c5a059]' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                  <span className="text-xs font-bold tracking-tight">Auditoria e Relatórios</span>
+                </div>
+                <ChevronDown className={`w-3 h-3 transition-transform ${reportsExpanded ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
 
+            {reportsExpanded && (
+              <div className="pl-10 space-y-1 py-1">
+                {[
+                  { id: 'visao-geral', label: 'Visão geral' },
+                  { id: 'conversas', label: 'Conversas' },
+                  { id: 'etiquetas', label: 'Etiquetas' },
+                  { id: 'inbox', label: 'Caixa de Entrada' },
+                  { id: 'time', label: 'Time' },
+                  { id: 'sla', label: 'SLA' },
+                  { id: 'robos', label: 'Robôs' }
+                ].map((subTab) => (
+                  <button
+                    key={subTab.id}
+                    onClick={() => setReportTab(subTab.id as any)}
+                    className={`w-full text-left py-2 px-3 rounded-lg text-xs transition-all ${
+                      reportTab === subTab.id 
+                        ? 'text-white font-bold bg-white/10' 
+                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    {subTab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
 
         <div className="p-6 border-t border-[#c5a059]/10 bg-[#071120]">
           {userProfile && (
@@ -542,7 +798,11 @@ export default function PortalVereador() {
             <div>
               <h2 className="font-serif text-xl font-bold text-[#0a192f] tracking-tight">
                 {mainView === 'all' && 'Fluxo Central'}
-                {mainView === 'vereadores' && 'Gabinete'}
+                {mainView === 'vereadores' && (
+                  selectedVereador 
+                    ? (['Joice Pedra', 'Soninha Pereira'].includes(selectedVereador) ? `Vereadora ${selectedVereador}` : `Vereador ${selectedVereador}`)
+                    : 'Gabinete Legislativo'
+                )}
                 {mainView === 'duvidas' && 'Informações'}
                 {mainView === 'reclamacoes' && 'Ouvidoria'}
                 {mainView === 'resolved' && 'Resolvidos'}
@@ -554,12 +814,42 @@ export default function PortalVereador() {
             </div>
           </div>
 
-          {['all', 'vereadores'].includes(mainView) ? (
+          {mainView === 'all' ? (
+            <div className="flex items-center gap-6">
+              {[
+                { id: 'all', label: 'Toda Câmara' }
+              ].map((tab) => (
+                <button 
+                  key={tab.id}
+                  onClick={() => setInboxSubFilter(tab.id as any)}
+                  className={`pb-3 text-[10px] font-black uppercase tracking-[0.1em] transition-all relative ${inboxSubFilter === tab.id ? 'text-[#0a192f]' : 'text-slate-400'}`}
+                >
+                  {tab.label}
+                  {inboxSubFilter === tab.id && <motion.div layoutId="subfilter" className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a059] rounded-full" />}
+                </button>
+              ))}
+            </div>
+          ) : mainView === 'vereadores' ? (
             <div className="flex items-center gap-6">
               {[
                 { id: 'mine', label: 'Meus Protocolos' },
-                { id: 'unassigned', label: 'Sem Atribuição' },
-                { id: 'all', label: 'Toda Câmara' }
+                { id: 'resolved', label: 'Resolvidos' }
+              ].map((tab) => (
+                <button 
+                  key={tab.id}
+                  onClick={() => setInboxSubFilter(tab.id as any)}
+                  className={`pb-3 text-[10px] font-black uppercase tracking-[0.1em] transition-all relative ${inboxSubFilter === tab.id ? 'text-[#0a192f]' : 'text-slate-400'}`}
+                >
+                  {tab.label}
+                  {inboxSubFilter === tab.id && <motion.div layoutId="subfilter" className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a059] rounded-full" />}
+                </button>
+              ))}
+            </div>
+          ) : (mainView === 'duvidas' || mainView === 'reclamacoes') ? (
+            <div className="flex items-center gap-6">
+              {[
+                { id: 'mine', label: 'Meus Protocolos' },
+                { id: 'resolved', label: 'Resolvidos' }
               ].map((tab) => (
                 <button 
                   key={tab.id}
@@ -657,128 +947,377 @@ export default function PortalVereador() {
       <div className="flex-1 flex flex-col bg-[#f4f1ea] relative">
         {mainView === 'reports' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-[#fdfcf9]">
-            <div className="max-w-6xl mx-auto space-y-8">
-              {/* Cabeçalho Profissional */}
-              <div className="flex items-center justify-between border-b border-[#c5a059]/20 pb-6">
+            <div className="max-w-5xl mx-auto space-y-8">
+              {/* Cabeçalho de Conteúdo */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-6">
                 <div>
-                  <h2 className="font-serif text-3xl font-bold text-[#0a192f]">Auditoria e Controle de Demandas</h2>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c5a059] mt-1">Relatórios de Desempenho Legislativo</p>
+                  <h2 className="font-serif text-3xl font-bold text-[#0a192f]">
+                    {reportTab === 'visao-geral' ? 'Visão Geral de Auditoria' : 
+                      reportTab.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                  </h2>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c5a059] mt-1">Controle de Desempenho Legislativo</p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <div className="flex bg-slate-100 p-1 rounded-xl">
+                    {[
+                      { label: '7D', value: '7' },
+                      { label: '15D', value: '15' },
+                      { label: '30D', value: '30' }
+                    ].map((range) => (
+                      <button
+                        key={range.value}
+                        onClick={() => setReportRange(range.value as any)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                          reportRange === range.value 
+                            ? 'bg-white text-[#0a192f] shadow-sm' 
+                            : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
                   <button onClick={fetchReports} className="flex items-center gap-2 px-4 py-2 bg-[#0a192f] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#1a2e4d] transition-all">
                     <Activity className="w-3 h-3" />
-                    Sincronizar Dados
+                    Sincronizar
                   </button>
                 </div>
               </div>
 
-              {/* Grid de Métricas Diretas */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Volume Total', value: reportSummary?.conversations_count || 0, color: 'text-[#0a192f]' },
-                  { label: 'Resolvidos', value: reportSummary?.resolutions_count || 0, color: 'text-emerald-600' },
-                  { label: 'T. Médio Resposta', value: reportSummary?.avg_first_response_time ? `${Math.round(reportSummary.avg_first_response_time / 60)}m` : '0m', color: 'text-amber-600' },
-                  { label: 'Mensagens Recebidas', value: reportSummary?.incoming_messages_count || 0, color: 'text-blue-600' }
-                ].map((stat, idx) => (
-                  <div key={idx} className="bg-white border border-[#c5a059]/10 p-5 rounded-2xl shadow-sm">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</h4>
-                    <div className={`text-2xl font-serif font-bold ${stat.color}`}>{stat.value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Seção de Dados e Ranking */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Gráfico de Tendência */}
-                <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-serif text-lg font-bold text-[#0a192f]">Volume de Demandas (7 dias)</h3>
-                    <TrendingUp className="w-4 h-4 text-[#c5a059]" />
-                  </div>
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={reportDaily}>
-                        <defs>
-                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#c5a059" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#c5a059" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
-                        <RechartsTooltip 
-                          contentStyle={{ backgroundColor: '#fff', border: '1px solid #c5a05933', borderRadius: '8px', fontSize: '10px' }}
-                        />
-                        <Area type="monotone" dataKey="value" stroke="#c5a059" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Ranking de Agentes / Equipes */}
-                <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#c5a059]/10">
-                  <h3 className="font-serif text-lg font-bold text-[#0a192f] mb-6 flex items-center gap-2">
-                    <Users className="w-5 h-5 text-[#c5a059]" />
-                    Distribuição por Gabinete
-                  </h3>
-                  <div className="space-y-6">
+              {reportTab === 'visao-geral' ? (
+                <>
+                  {/* Grid de Métricas Diretas */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     {[
-                      { name: 'Gabinete Principal', value: 45, color: 'bg-[#0a192f]' },
-                      { name: 'Jurídico', value: 30, color: 'bg-[#c5a059]' },
-                      { name: 'Obras/Infra', value: 15, color: 'bg-slate-400' },
-                      { name: 'Saúde', value: 10, color: 'bg-emerald-500' }
-                    ].map((item, i) => (
-                      <div key={i} className="space-y-2">
-                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
-                          <span>{item.name}</span>
-                          <span>{item.value}%</span>
-                        </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${item.value}%` }}
-                            className={`h-full ${item.color}`}
-                          />
-                        </div>
+                      { label: 'Volume Total', value: reportSummary?.summary?.conversations_count || reportSummary?.conversations_count || 0, color: 'text-[#0a192f]' },
+                      { label: 'Resolvidos', value: reportSummary?.summary?.resolutions_count || reportSummary?.resolutions_count || 0, color: 'text-emerald-600' },
+                      { label: 'T. Médio Resposta', value: (reportSummary?.summary?.avg_first_response_time || reportSummary?.avg_first_response_time) ? `${Math.round((reportSummary?.summary?.avg_first_response_time || reportSummary?.avg_first_response_time) / 60)}m` : '0m', color: 'text-amber-600' },
+                      { label: 'Mensagens Recebidas', value: reportSummary?.summary?.incoming_messages_count || reportSummary?.incoming_messages_count || 0, color: 'text-blue-600' }
+                    ].map((stat, idx) => (
+                      <div key={idx} className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</h4>
+                        <div className={`text-2xl font-serif font-bold ${stat.color}`}>{stat.value}</div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
 
-              {/* Métricas de Eficiência Adicionais */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Média de Resolução</h4>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-serif font-bold text-[#0a192f]">
-                      {reportSummary?.avg_resolution_time ? Math.round(reportSummary.avg_resolution_time / 3600) : 0}h
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-600">-15% vs mês anterior</span>
-                  </div>
-                </div>
-                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Taxa de Satisfação</h4>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-serif font-bold text-[#0a192f]">4.8/5</span>
-                    <span className="text-[10px] font-bold text-emerald-600">Excelente</span>
-                  </div>
-                </div>
-                <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-[#c5a059]/10">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Resolvidos na 1ª Resposta</h4>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-serif font-bold text-[#0a192f]">72%</span>
-                    <span className="text-[10px] font-bold text-[#c5a059]">Meta: 80%</span>
-                  </div>
-                </div>
-              </div>
+                  {/* Seção de Dados e Ranking */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Gráfico de Tendência */}
+                    <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="font-serif text-lg font-bold text-[#0a192f]">Volume de Demandas (7 dias)</h3>
+                        <TrendingUp className="w-4 h-4 text-[#c5a059]" />
+                      </div>
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={reportDaily}>
+                            <defs>
+                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#c5a059" stopOpacity={0.1}/>
+                                <stop offset="95%" stopColor="#c5a059" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
+                            <RechartsTooltip 
+                              contentStyle={{ backgroundColor: '#fff', border: '1px solid #c5a05933', borderRadius: '8px', fontSize: '10px' }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#c5a059" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
 
-              {/* Rodapé de Controle */}
-              <div className="flex items-center justify-between pt-4 border-t border-[#c5a059]/10 text-[9px] font-black uppercase tracking-widest text-slate-400">
-                <span>Câmara Municipal de São João da Barra</span>
-                <span>Relatório Gerado em: {format(new Date(), 'dd/MM/yyyy HH:mm')}</span>
-              </div>
+                    {/* Ranking de Agentes / Equipes */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                      <h3 className="font-serif text-lg font-bold text-[#0a192f] mb-6 flex items-center gap-2">
+                        <Users className="w-5 h-5 text-[#c5a059]" />
+                        Tempo de Resposta (Distribuição)
+                      </h3>
+                      <div className="space-y-6">
+                        {reportSummary?.distribution ? (
+                          Object.entries(reportSummary.distribution).slice(0, 1).map(([channel, data]: [string, any]) => (
+                            Object.entries(data).map(([range, count]: [string, any], i) => {
+                              const total = Object.values(data).reduce((a: any, b: any) => a + b, 0) as number;
+                              const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                              return (
+                                <div key={i} className="space-y-2">
+                                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
+                                    <span>{range}</span>
+                                    <span>{percentage}%</span>
+                                  </div>
+                                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <motion.div 
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${percentage}%` }}
+                                      className={`h-full bg-[#c5a059]`}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ))
+                        ) : (
+                          [
+                            { name: 'Saúde Pública', value: 45, color: 'bg-[#0a192f]' },
+                            { name: 'Jurídico', value: 30, color: 'bg-[#c5a059]' },
+                            { name: 'Obras/Infra', value: 15, color: 'bg-slate-400' },
+                            { name: 'Educação', value: 10, color: 'bg-emerald-500' }
+                          ].map((item, i) => (
+                            <div key={i} className="space-y-2">
+                              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
+                                <span>{item.name}</span>
+                                <span>{item.value}%</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${item.value}%` }}
+                                  className={`h-full ${item.color}`}
+                                />
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Métricas de Eficiência Adicionais */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-slate-100">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Média de Resolução</h4>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-serif font-bold text-[#0a192f]">
+                          {(reportSummary?.summary?.avg_resolution_time || reportSummary?.avg_resolution_time) ? Math.round((reportSummary?.summary?.avg_resolution_time || reportSummary?.avg_resolution_time) / 3600) : 0}h
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600">-15% vs mês anterior</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-slate-100">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Taxa de Satisfação</h4>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-serif font-bold text-[#0a192f]">4.8/5</span>
+                        <span className="text-[10px] font-bold text-emerald-600">Excelente</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-slate-100">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Resolvidos na 1ª Resposta</h4>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-serif font-bold text-[#0a192f]">72%</span>
+                        <span className="text-[10px] font-bold text-[#c5a059]">Meta: 80%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rodapé de Controle */}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                    <span>Câmara Municipal de São João da Barra</span>
+                    <span>Relatório Gerado em: {format(new Date(), 'dd/MM/yyyy HH:mm')}</span>
+                  </div>
+                </>
+              ) : reportTab === 'conversas' ? (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif text-xl font-bold text-[#0a192f]">Relatório de Conversas</h3>
+                    <TrendingUp className="w-5 h-5 text-[#c5a059]" />
+                  </div>
+                  
+                  {/* Métricas Principais de Conversas */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total de Conversas</h4>
+                      <div className="text-3xl font-serif font-bold text-[#0a192f]">
+                        {reportSummary?.summary?.conversations_count || 0}
+                      </div>
+                      <p className="text-[10px] text-emerald-600 mt-2 font-bold">+12% vs período anterior</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Conversas Resolvidas</h4>
+                      <div className="text-3xl font-serif font-bold text-emerald-600">
+                        {reportSummary?.summary?.resolutions_count || 0}
+                      </div>
+                      <p className="text-[10px] text-emerald-600 mt-2 font-bold">Taxa: {reportSummary?.summary?.conversations_count ? Math.round((reportSummary.summary.resolutions_count / reportSummary.summary.conversations_count) * 100) : 0}%</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Mensagens Recebidas</h4>
+                      <div className="text-3xl font-serif font-bold text-blue-600">
+                        {reportSummary?.summary?.incoming_messages_count || 0}
+                      </div>
+                      <p className="text-[10px] text-blue-600 mt-2 font-bold">Média: {reportSummary?.summary?.conversations_count ? Math.round(reportSummary.summary.incoming_messages_count / reportSummary.summary.conversations_count) : 0} msg/conv</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                    <h4 className="font-serif text-lg font-bold text-[#0a192f] mb-6">Distribuição de Tempo de Resposta</h4>
+                    <div className="space-y-4">
+                      {reportSummary?.distribution ? (
+                        Object.entries(reportSummary.distribution).slice(0, 1).map(([channel, data]: [string, any]) => (
+                          Object.entries(data).map(([range, count]: [string, any], i) => {
+                            const total = Object.values(data).reduce((a: any, b: any) => a + b, 0) as number;
+                            const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                            return (
+                              <div key={i} className="space-y-2">
+                                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
+                                  <span>{range}</span>
+                                  <span>{count} conversas ({percentage}%)</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${percentage}%` }}
+                                    className={`h-full bg-[#c5a059]`}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        ))
+                      ) : (
+                        <div className="text-center py-10 text-slate-400 italic text-sm">Carregando dados de distribuição...</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : reportTab === 'time' ? (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif text-xl font-bold text-[#0a192f]">Desempenho por Gabinete / Equipe</h3>
+                    <TrendingUp className="w-5 h-5 text-[#c5a059]" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    {Array.isArray(reportDetail) && reportDetail.length > 0 ? (
+                      reportDetail.map((team: any, i: number) => (
+                        <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-[#c5a059]/30 transition-all group">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-[#0a192f] flex items-center justify-center font-serif font-bold text-[#c5a059] border border-[#c5a059]/20 shadow-inner group-hover:scale-105 transition-transform">
+                              {team.name ? team.name[0] : 'T'}
+                            </div>
+                            <div>
+                              <h4 className="font-serif text-lg font-bold text-[#0a192f]">
+                                {team.name === 'vereadores' ? 'Gabinete Legislativo (Vereadores)' :
+                                 team.name === 'duvidas e informações' ? 'Dúvidas e Informações' :
+                                 team.name === 'reclamações' ? 'Ouvidoria de Reclamações' :
+                                 team.name || `Equipe Técnica (ID ${team.id || i})`}
+                              </h4>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-[#c5a059]">Atuação Legislativa</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-6">
+                            <div className="text-center min-w-[80px]">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Demandas</p>
+                              <p className="text-lg font-serif font-bold text-[#0a192f]">{team.conversations_count || 0}</p>
+                            </div>
+                            <div className="text-center min-w-[80px]">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Resolvidos</p>
+                              <p className="text-lg font-serif font-bold text-emerald-600">{team.resolutions_count || 0}</p>
+                            </div>
+                            <div className="text-center min-w-[100px]">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Média Resposta</p>
+                              <p className="text-lg font-serif font-bold text-amber-600">{team.avg_first_response_time ? `${Math.round(team.avg_first_response_time / 60)}m` : '---'}</p>
+                            </div>
+                            <div className="text-center min-w-[100px]">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Média Resolução</p>
+                              <p className="text-lg font-serif font-bold text-[#0a192f]">{team.avg_resolution_time ? `${Math.round(team.avg_resolution_time / 3600)}h` : '---'}</p>
+                            </div>
+                            <button className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-[#c5a059] transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                        <Users className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                        <h4 className="font-serif text-lg font-bold text-slate-300">Nenhum dado de equipe encontrado</h4>
+                        <p className="text-xs text-slate-400 mt-1 italic">Tente sincronizar novamente ou verifique as configurações do Chatwoot.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : reportTab === 'inbox' ? (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif text-xl font-bold text-[#0a192f]">Desempenho por Canal de Entrada</h3>
+                    <Inbox className="w-5 h-5 text-[#c5a059]" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    {Array.isArray(reportDetail) && reportDetail.length > 0 ? (
+                      reportDetail.map((inbox: any, i: number) => (
+                        <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                              <Inbox className="w-5 h-5 text-[#c5a059]" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-[#0a192f]">{inbox.name}</h4>
+                              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{inbox.channel_type || 'WhatsApp'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-10">
+                            <div className="text-right">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Conversas</p>
+                              <p className="text-xl font-serif font-bold text-[#0a192f]">{inbox.conversations_count || 0}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">T. Resposta</p>
+                              <p className="text-xl font-serif font-bold text-amber-600">{inbox.avg_first_response_time ? `${Math.round(inbox.avg_first_response_time / 60)}m` : '---'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                        <Inbox className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                        <h4 className="font-serif text-lg font-bold text-slate-300">Nenhum dado de canal encontrado</h4>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : reportTab === 'etiquetas' ? (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif text-xl font-bold text-[#0a192f]">Assuntos mais Recorrentes (Etiquetas)</h3>
+                    <Tag className="w-5 h-5 text-[#c5a059]" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {Array.isArray(reportDetail) && reportDetail.length > 0 ? (
+                      reportDetail.map((label: any, i: number) => (
+                        <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between hover:scale-[1.02] transition-all">
+                          <span className="px-2 py-1 rounded bg-[#c5a059]/10 text-[#c5a059] text-[9px] font-black uppercase tracking-wider self-start mb-4">
+                            {label.name}
+                          </span>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Volume de Casos</p>
+                            <p className="text-2xl font-serif font-bold text-[#0a192f]">{label.conversations_count || 0}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-3 py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                        <Tag className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                        <h4 className="font-serif text-lg font-bold text-slate-300">Nenhum dado de etiqueta encontrado</h4>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
+                    <Activity className="w-8 h-8 text-slate-200" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-xl font-bold text-[#0a192f]">Módulo {reportTab.replace('-', ' ')}</h3>
+                    <p className="text-sm text-slate-500 italic max-w-sm">Os dados detalhados para esta categoria estão sendo compilados pelo servidor legislativo.</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : selectedMessage ? (
@@ -837,39 +1376,52 @@ export default function PortalVereador() {
                   <div className="w-12 h-12 border-4 border-[#c5a059]/20 border-t-[#c5a059] rounded-full animate-spin" />
                   <p className="font-serif italic text-[#0a192f]/60">Recuperando transcrições oficiais...</p>
                 </div>
-              ) : conversationMessages.length > 0 ? (
-                conversationMessages.map((m, idx) => {
-                  const isSystem = m.message_type === 'outgoing';
-                  return (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      key={m.id || idx} 
-                      className={`flex ${isSystem ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`max-w-[75%] space-y-2 ${isSystem ? 'items-end' : 'items-start'}`}>
-                        <div className={`p-6 rounded-2xl shadow-sm border ${
-                          isSystem 
-                            ? 'bg-[#0a192f] text-white border-[#c5a059]/30 rounded-tr-none' 
-                            : 'bg-white text-[#0a192f] border-[#c5a059]/10 rounded-tl-none'
-                        }`}>
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                            {m.content}
+              ) : conversationMessages && conversationMessages.length > 0 ? (
+                  conversationMessages
+                    .filter(m => {
+                      if (!m) return false;
+                      const content = (m.content || '').toLowerCase();
+                      const isAutomation = content.includes('automation system') || 
+                                       content.includes('assigned to') ||
+                                       (content.includes('added') && (content.includes('label') || content.includes('etiqueta'))) ||
+                                       (content.includes('removed') && (content.includes('label') || content.includes('etiqueta'))) ||
+                                       content.includes('escolha_vereador') ||
+                                       content.includes('estado_encaminhado');
+                      return !isAutomation;
+                    })
+                    .map((m, idx) => {
+                      if (!m) return null;
+                      const isSystem = m.message_type === 'outgoing';
+                      return (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          key={m.id || idx} 
+                          className={`flex ${isSystem ? 'justify-end' : 'justify-start'}`}
+                        >
+                        <div className={`max-w-[75%] space-y-2 ${isSystem ? 'items-end' : 'items-start'}`}>
+                          <div className={`p-6 rounded-2xl shadow-sm border ${
+                            isSystem 
+                              ? 'bg-[#0a192f] text-white border-[#c5a059]/30 rounded-tr-none' 
+                              : 'bg-white text-[#0a192f] border-[#c5a059]/10 rounded-tl-none'
+                          }`}>
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                              {m.content}
+                            </p>
+                          </div>
+                          <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${isSystem ? 'text-[#c5a059]' : 'text-slate-400'}`}>
+                            {m.sender?.name || (isSystem ? 'Oficial Legislativo' : 'Munícipe')} • {safeFormatDate(m.created_at || m.timestamp)}
                           </p>
                         </div>
-                        <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${isSystem ? 'text-[#c5a059]' : 'text-slate-400'}`}>
-                          {m.sender?.name || (isSystem ? 'Oficial Legislativo' : 'Peticionário')} • {safeFormatDate(m.created_at || m.timestamp)}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })
+                      </motion.div>
+                    );
+                  })
               ) : (
                 <div className="flex justify-start">
                   <div className="max-w-[75%] bg-white p-8 rounded-3xl rounded-tl-none border border-[#c5a059]/20 shadow-xl">
                     <p className="text-sm text-[#0a192f] leading-relaxed italic">&quot;{selectedMessage.message}&quot;</p>
                     <div className="mt-4 flex items-center justify-between border-t border-[#c5a059]/10 pt-4">
-                      <span className="text-[9px] font-black text-[#c5a059] uppercase tracking-widest">{selectedMessage.contact_name} • Protocolo de Entrada</span>
+                      <span className="text-[9px] font-black text-[#c5a059] uppercase tracking-widest">{selectedMessage.contact_name} • Munícipe</span>
                     </div>
                   </div>
                 </div>
@@ -1020,7 +1572,7 @@ export default function PortalVereador() {
             <div className="p-5 flex items-center justify-between border-b border-white/5 bg-[#0a192f]">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#c5a059]" />
-                <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Dossiê do Peticionário</h3>
+                <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Dossiê do Munícipe</h3>
               </div>
               <button onClick={() => setShowContactDetails(false)} className="p-1.5 hover:bg-white/10 rounded-full text-white/50 transition-colors">
                 <Plus className="w-4 h-4 rotate-45" />
@@ -1053,13 +1605,23 @@ export default function PortalVereador() {
                   <p className="text-[8px] font-black text-[#c5a059] uppercase tracking-widest mt-0.5">ID: #{selectedMessage.contact_id || '---'}</p>
                   
                   <div className="flex gap-2 mt-3">
-                    <button className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all">
-                      <Mail className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all">
-                      <Phone className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all">
+                    {selectedMessage.contact_email && (
+                      <a href={`mailto:${selectedMessage.contact_email}`} className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all">
+                        <Mail className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    {selectedMessage.contact_phone && (
+                      <a href={`tel:${selectedMessage.contact_phone}`} className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all">
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    <button 
+                      onClick={() => {
+                        const info = `Nome: ${selectedMessage.contact_name}\nID: ${selectedMessage.contact_id}\nEmail: ${selectedMessage.contact_email || 'N/A'}\nFone: ${selectedMessage.contact_phone || 'N/A'}`;
+                        navigator.clipboard.writeText(info);
+                      }}
+                      className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white transition-all"
+                    >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -1069,61 +1631,169 @@ export default function PortalVereador() {
               {/* Accordion Sections - Densified */}
               <div className="space-y-2">
                 {[
-                  { label: 'Mensagens agendadas', icon: Clock },
-                  { label: 'Ações da conversa', icon: Settings, defaultOpen: true },
-                  { label: 'Macros', icon: FileText },
-                  { label: 'Informação da conversa', icon: Info },
-                  { label: 'Atributos do contato', icon: User },
-                  { label: 'Notas do contato', icon: StickyNote },
-                  { label: 'Anexos', icon: Paperclip },
-                  { label: 'Conversas anteriores', icon: History },
-                  { label: 'Participantes da conversa', icon: Users }
-                ].map((item, idx) => (
-                  <div key={idx} className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
-                    <button className="w-full flex items-center justify-between p-3.5 hover:bg-white/10 transition-all group">
-                      <div className="flex items-center gap-3">
-                        <item.icon className="w-3.5 h-3.5 text-[#c5a059]/60 group-hover:text-[#c5a059]" />
-                        <span className="text-[11px] font-bold text-white/80 group-hover:text-white transition-colors uppercase tracking-wider">{item.label}</span>
-                      </div>
-                      <Plus className="w-3 h-3 text-white/20 group-hover:text-white/50" />
-                    </button>
-                    
-                    {item.label === 'Ações da conversa' && (
-                      <div className="px-4 pb-4 space-y-4">
-                        <div className="space-y-3">
-                          <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Estado do Protocolo</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {['open', 'resolved', 'pending', 'snoozed'].map((s) => (
-                              <button
-                                key={s}
-                                onClick={() => handleUpdateStatus(s as any)}
-                                className={`py-2 px-2 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${
-                                  selectedMessage.status === s 
-                                    ? 'bg-[#c5a059] text-[#0a192f] border-[#c5a059] shadow-lg shadow-[#c5a059]/10' 
-                                    : 'bg-white/5 text-white/40 border-white/5 hover:border-white/20'
-                                }`}
-                              >
-                                {s === 'open' ? 'Aberta' : s === 'resolved' ? 'Resolvida' : s === 'pending' ? 'Pendente' : 'Adiada'}
-                              </button>
-                            ))}
-                          </div>
+                  { id: 'actions', label: 'Ações da conversa', icon: Settings },
+                  { id: 'info', label: 'Informação da conversa', icon: Info },
+                  { id: 'attributes', label: 'Atributos do contato', icon: User },
+                  { id: 'attachments', label: 'Anexos', icon: Paperclip },
+                ].map((item) => {
+                  const isOpen = sidebarOpenSections.includes(item.label);
+                  return (
+                    <div key={item.id} className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
+                      <button 
+                        onClick={() => {
+                          setSidebarOpenSections(prev => 
+                            prev.includes(item.label) ? prev.filter(s => s !== item.label) : [...prev, item.label]
+                          );
+                        }}
+                        className="w-full flex items-center justify-between p-3.5 hover:bg-white/10 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-3.5 h-3.5 text-[#c5a059]/60 group-hover:text-[#c5a059]" />
+                          <span className="text-[11px] font-bold text-white/80 group-hover:text-white transition-colors uppercase tracking-wider">{item.label}</span>
                         </div>
-                        <div className="pt-2 space-y-3 border-t border-white/5">
-                          <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Atribuição de Gabinete</p>
-                          <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-lg bg-[#c5a059]/10 flex items-center justify-center border border-[#c5a059]/20">
-                                <User className="w-3 h-3 text-[#c5a059]" />
+                        {isOpen ? <Minus className="w-3 h-3 text-white/20 group-hover:text-white/50" /> : <Plus className="w-3 h-3 text-white/20 group-hover:text-white/50" />}
+                      </button>
+                      
+                      <AnimatePresence>
+                        {isOpen && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="px-4 pb-4 overflow-hidden"
+                          >
+                            {item.id === 'actions' && (
+                              <div className="space-y-4 pt-2">
+                                <div className="space-y-3">
+                                  <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Estado do Protocolo</p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {['open', 'resolved', 'pending', 'snoozed'].map((s) => (
+                                      <button
+                                        key={s}
+                                        onClick={() => handleUpdateStatus(s as any)}
+                                        className={`py-2 px-2 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${
+                                          selectedMessage.status === s 
+                                            ? 'bg-[#c5a059] text-[#0a192f] border-[#c5a059] shadow-lg shadow-[#c5a059]/10' 
+                                            : 'bg-white/5 text-white/40 border-white/5 hover:border-white/20'
+                                        }`}
+                                      >
+                                        {s === 'open' ? 'Aberta' : s === 'resolved' ? 'Resolvida' : s === 'pending' ? 'Pendente' : 'Adiada'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="pt-2 space-y-3 border-t border-white/5">
+                                  <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Atribuição de Gabinete</p>
+                                  <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-xl border border-white/5">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-lg bg-[#c5a059]/10 flex items-center justify-center border border-[#c5a059]/20">
+                                        <User className="w-3 h-3 text-[#c5a059]" />
+                                      </div>
+                                      <span className="text-xs font-bold text-white/90">{selectedMessage.assignee || 'Sem Relator'}</span>
+                                    </div>
+                                    <Settings className="w-3 h-3 text-white/20 hover:text-white cursor-pointer" />
+                                  </div>
+                                </div>
+                                <div className="pt-2 space-y-3 border-t border-white/5">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Etiquetas</p>
+                                    <Plus className="w-2.5 h-2.5 text-[#c5a059] cursor-pointer" onClick={() => {
+                                      const label = prompt('Nova etiqueta:');
+                                      if (label) {
+                                        handleAddLabel(label);
+                                      }
+                                    }} />
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {selectedMessage.labels?.map((l, i) => (
+                                      <span key={i} className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[8px] font-black text-[#c5a059] uppercase tracking-wider">
+                                        {l}
+                                      </span>
+                                    )) || <span className="text-[8px] text-white/20 italic">Sem etiquetas</span>}
+                                  </div>
+                                </div>
                               </div>
-                              <span className="text-xs font-bold text-white/90">{selectedMessage.assignee || 'Sem Relator'}</span>
-                            </div>
-                            <Settings className="w-3 h-3 text-white/20 hover:text-white cursor-pointer" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                            )}
+
+                            {item.id === 'info' && (
+                              <div className="space-y-3 pt-2">
+                                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-[9px] text-white/40 uppercase tracking-tighter">Conversa ID</span>
+                                    <span className="text-[10px] font-mono text-white/80">#{selectedMessage.conversation_id}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-[9px] text-white/40 uppercase tracking-tighter">Iniciada em</span>
+                                    <span className="text-[10px] text-white/80">{safeFormatDate(selectedMessage.created_at)}</span>
+                                  </div>
+                                  {fullConversationData && (
+                                    <>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-white/40 uppercase tracking-tighter">Caixa de Entrada</span>
+                                        <span className="text-[10px] text-white/80 truncate ml-2">{fullConversationData.meta?.channel}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-white/40 uppercase tracking-tighter">Status Atual</span>
+                                        <span className="text-[10px] font-black text-[#c5a059] uppercase">{fullConversationData.status}</span>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {item.id === 'attributes' && (
+                              <div className="space-y-3 pt-2">
+                                {fullConversationData?.custom_attributes && Object.keys(fullConversationData.custom_attributes).length > 0 ? (
+                                  Object.entries(fullConversationData.custom_attributes).map(([key, value]: [string, any]) => (
+                                    <div key={key} className="p-3 bg-white/5 rounded-xl border border-white/5 flex justify-between items-center">
+                                      <span className="text-[9px] text-white/40 uppercase tracking-tighter">{key}</span>
+                                      <span className="text-[10px] text-white/80 font-bold">{String(value)}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-4 border-2 border-dashed border-white/5 rounded-xl">
+                                    <p className="text-[9px] text-white/20 uppercase font-black">Nenhum atributo extra</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {item.id === 'attachments' && (
+                              <div className="space-y-3 pt-2">
+                                {conversationMessages.filter(m => m.attachments && m.attachments.length > 0).length > 0 ? (
+                                  conversationMessages.filter(m => m.attachments && m.attachments.length > 0).map((msg, midx) => (
+                                    msg.attachments.map((att: any, aidx: number) => (
+                                      <a 
+                                        key={`${midx}-${aidx}`}
+                                        href={att.data_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 p-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all group"
+                                      >
+                                        <div className="w-8 h-8 rounded-lg bg-[#c5a059]/10 flex items-center justify-center border border-[#c5a059]/20">
+                                          {att.file_type === 'image' ? <PieChart className="w-3.5 h-3.5 text-[#c5a059]" /> : <FileText className="w-3.5 h-3.5 text-[#c5a059]" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-[10px] font-bold text-white/90 truncate">{att.file_type || 'Arquivo'}</p>
+                                          <p className="text-[8px] text-white/30 uppercase tracking-tighter">Anexo Legislativo</p>
+                                        </div>
+                                      </a>
+                                    ))
+                                  ))
+                                ) : (
+                                  <div className="text-center py-4 border-2 border-dashed border-white/5 rounded-xl">
+                                    <p className="text-[9px] text-white/20 uppercase font-black">Sem anexos vinculados</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

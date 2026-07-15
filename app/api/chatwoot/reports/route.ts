@@ -1,4 +1,10 @@
-import { getChatwootReports, getChatwootReportsSummary } from "@/lib/chatwoot";
+import { 
+  getChatwootReports, 
+  getChatwootReportsSummary,
+  getChatwootTeamSummary,
+  getChatwootChannelSummary,
+  getChatwootFirstResponseDistribution
+} from "@/lib/chatwoot";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -7,10 +13,25 @@ export async function GET(req: NextRequest) {
     const metric = searchParams.get('metric');
     const type = searchParams.get('type') || 'account';
     
-    // Se não houver métrica, retorna o sumário
+    // Se não houver métrica, retorna o sumário completo com dados reais
     if (!metric) {
-      const summary = await getChatwootReportsSummary();
-      return NextResponse.json(summary);
+      const since = searchParams.get('since');
+      const until = searchParams.get('until');
+      const params = since && until ? { since, until } : {};
+
+      const [summary, teams, channels, distribution] = await Promise.all([
+        getChatwootReportsSummary(params),
+        getChatwootTeamSummary(params),
+        getChatwootChannelSummary(params),
+        getChatwootFirstResponseDistribution(params)
+      ]);
+
+      return NextResponse.json({
+        summary,
+        teams,
+        channels,
+        distribution
+      });
     }
 
     // Se houver métrica, retorna os dados da métrica

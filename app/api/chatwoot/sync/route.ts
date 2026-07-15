@@ -8,16 +8,36 @@ export async function GET() {
     // Forçamos assignee_type: 'all' para garantir que vemos conversas não atribuídas ou de outros agentes
     console.log('Iniciando sincronização global de conversas (assignee_type: all)...');
     
-    const conversations = await getChatwootConversations({ status: 'all', assignee_type: 'all' });
+    // Busca múltiplas páginas de conversas para garantir que temos dados suficientes para contagens
+    // Chatwoot retorna 25 por página por padrão
+    console.log('Iniciando sincronização global de conversas (múltiplas páginas)...');
     
-    if (!Array.isArray(conversations)) {
-      console.error(`Resposta de conversas não é um array:`, conversations);
-      return NextResponse.json({ error: 'Resposta inválida do Chatwoot' }, { status: 500 });
-    }
+    const page1 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 1 });
+    const page2 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 2 });
+    const page3 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 3 });
+    const page4 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 4 });
+    const page5 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 5 });
+    const page6 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 6 });
+    const page7 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 7 });
+    const page8 = await getChatwootConversations({ status: 'all', assignee_type: 'all', page: 8 });
+    
+    // Combina os resultados e remove duplicatas por ID
+    const allConversations = [
+      ...(Array.isArray(page1) ? page1 : []),
+      ...(Array.isArray(page2) ? page2 : []),
+      ...(Array.isArray(page3) ? page3 : []),
+      ...(Array.isArray(page4) ? page4 : []),
+      ...(Array.isArray(page5) ? page5 : []),
+      ...(Array.isArray(page6) ? page6 : []),
+      ...(Array.isArray(page7) ? page7 : []),
+      ...(Array.isArray(page8) ? page8 : []),
+    ];
 
-    console.log(`Encontradas ${conversations.length} conversas no total`);
+    const uniqueConversations = Array.from(new Map(allConversations.map(c => [c.id, c])).values());
+    
+    console.log(`Encontradas ${uniqueConversations.length} conversas únicas no total`);
 
-    const results = await Promise.all(conversations.map(async (conv) => {
+    const results = await Promise.all(uniqueConversations.map(async (conv) => {
       try {
         let lastMessage = conv.last_non_activity_message;
         
