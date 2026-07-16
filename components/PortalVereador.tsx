@@ -376,8 +376,8 @@ export default function PortalVereador() {
     }
   };
 
-  const fetchConversationHistory = async (id: number) => {
-    setLoadingHistory(true);
+  const fetchConversationHistory = async (id: number, silent = false) => {
+    if (!silent) setLoadingHistory(true);
     try {
       const response = await fetch(`/api/chatwoot/conversations/${id}/messages`);
       const data = await response.json();
@@ -393,7 +393,7 @@ export default function PortalVereador() {
     } catch (error) {
       console.error('Erro ao buscar histórico:', error);
     } finally {
-      setLoadingHistory(false);
+      if (!silent) setLoadingHistory(false);
     }
   };
 
@@ -453,14 +453,20 @@ export default function PortalVereador() {
     }
   };
 
-  // Periodic sync every 30 seconds
+  // Periodic sync every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       handleSync(true);
       fetchCounts();
-    }, 30000);
+      
+      // Se houver uma conversa selecionada, atualiza o histórico dela silenciosamente
+      const currentId = selectedMessage?.conversation_id || selectedMessage?.id;
+      if (currentId) {
+        fetchConversationHistory(Number(currentId), true);
+      }
+    }, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedMessage?.id, selectedMessage?.conversation_id]);
 
   const [showAiMenu, setShowAiMenu] = useState(false);
   const [aiInfo, setAiInfo] = useState<string | null>(null);
@@ -1071,26 +1077,9 @@ export default function PortalVereador() {
                             })
                           ))
                         ) : (
-                          [
-                            { name: 'Saúde Pública', value: 45, color: 'bg-[#0a192f]' },
-                            { name: 'Jurídico', value: 30, color: 'bg-[#c5a059]' },
-                            { name: 'Obras/Infra', value: 15, color: 'bg-slate-400' },
-                            { name: 'Educação', value: 10, color: 'bg-emerald-500' }
-                          ].map((item, i) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#0a192f]">
-                                <span>{item.name}</span>
-                                <span>{item.value}%</span>
-                              </div>
-                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <motion.div 
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${item.value}%` }}
-                                  className={`h-full ${item.color}`}
-                                />
-                              </div>
-                            </div>
-                          ))
+                          <div className="flex items-center justify-center h-40 text-slate-400 text-xs italic">
+                            Dados de distribuição não disponíveis
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1104,21 +1093,22 @@ export default function PortalVereador() {
                         <span className="text-3xl font-serif font-bold text-[#0a192f]">
                           {(reportSummary?.summary?.avg_resolution_time || reportSummary?.avg_resolution_time) ? Math.round((reportSummary?.summary?.avg_resolution_time || reportSummary?.avg_resolution_time) / 3600) : 0}h
                         </span>
-                        <span className="text-[10px] font-bold text-emerald-600">-15% vs mês anterior</span>
                       </div>
                     </div>
                     <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-slate-100">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Taxa de Satisfação</h4>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Taxa de Resolução</h4>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-serif font-bold text-[#0a192f]">4.8/5</span>
-                        <span className="text-[10px] font-bold text-emerald-600">Excelente</span>
+                        <span className="text-3xl font-serif font-bold text-[#0a192f]">
+                          {reportSummary?.summary?.conversations_count ? Math.round((reportSummary.summary.resolutions_count / reportSummary.summary.conversations_count) * 100) : 0}%
+                        </span>
                       </div>
                     </div>
                     <div className="bg-[#fcfaf5] p-6 rounded-2xl border border-slate-100">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Resolvidos na 1ª Resposta</h4>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#c5a059] mb-4">Conversas Totais</h4>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-serif font-bold text-[#0a192f]">72%</span>
-                        <span className="text-[10px] font-bold text-[#c5a059]">Meta: 80%</span>
+                        <span className="text-3xl font-serif font-bold text-[#0a192f]">
+                          {reportSummary?.summary?.conversations_count || 0}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1208,13 +1198,14 @@ export default function PortalVereador() {
                               {(() => {
                                 const id = Number(team.id);
                                 const teamFromState = teams.find(t => Number(t.id) === id);
-                                const rawName = team.name || teamFromState?.name || '';
+                                const vereadorFromList = VEREADORES.find(v => Number(v.id) === id);
+                                const rawName = team.name || teamFromState?.name || vereadorFromList?.name || '';
                                 const cleanName = rawName.replace(/^(vereador|vereadora|gabinete)\s*:?\s*/i, '').trim();
                                 
                                 if (id === 1) return 'S'; // Suporte
                                 if (id === 2) return 'D'; // Dúvidas
                                 if (id === 3) return 'O'; // Ouvidoria
-                                return cleanName ? cleanName[0].toUpperCase() : 'T';
+                                return cleanName ? cleanName[0].toUpperCase() : 'G';
                               })()}
                             </div>
                             <div>
@@ -1222,7 +1213,8 @@ export default function PortalVereador() {
                                 {(() => {
                                   const id = Number(team.id);
                                   const teamFromState = teams.find(t => Number(t.id) === id);
-                                  const rawName = team.name || teamFromState?.name || '';
+                                  const vereadorFromList = VEREADORES.find(v => Number(v.id) === id);
+                                  const rawName = team.name || teamFromState?.name || vereadorFromList?.name || '';
                                   const lowerName = rawName.toLowerCase();
 
                                   if (id === 1) return 'Suporte: Equipe Técnica';
@@ -1233,6 +1225,8 @@ export default function PortalVereador() {
                                   // Limpa o nome removendo termos indesejados
                                   const cleanName = rawName.replace(/^(vereador|vereadora|gabinete)\s*:?\s*/i, '').trim();
                                   
+                                  if (!cleanName) return vereadorFromList ? `Gabinete: ${vereadorFromList.name}` : 'Gabinete Legislativo';
+
                                   // Capitalização Inteligente (Title Case)
                                   const capitalized = cleanName
                                     .split(' ')
@@ -1244,7 +1238,6 @@ export default function PortalVereador() {
                                     })
                                     .join(' ');
 
-                                  if (!capitalized) return 'Equipe Técnica';
                                   return `Gabinete: ${capitalized}`;
                                 })()}
                               </h4>
@@ -1659,8 +1652,16 @@ export default function PortalVereador() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
-            <div className="w-40 h-40 bg-white rounded-[50px] flex items-center justify-center mb-12 shadow-[0_30px_60px_-15px_rgba(10,25,47,0.15)] border border-[#c5a059]/20 rotate-6">
-              <Shield className="w-20 h-20 text-[#c5a059] opacity-30 -rotate-6" />
+            <div className="w-60 h-60 mb-10 relative rounded-full overflow-hidden border-4 border-[#c5a059]/30 shadow-[0_20px_50px_rgba(10,25,47,0.3)] hover:scale-105 transition-all duration-500 ease-out bg-[#0a192f] flex items-center justify-center">
+              <Image 
+                src="/logo-camara.png"
+                alt="Brasão Câmara Municipal"
+                width={240}
+                height={240}
+                className="object-contain w-[90%] h-[90%] scale-[1.02]"
+                priority
+                referrerPolicy="no-referrer"
+              />
             </div>
             <h3 className="font-serif text-4xl font-bold text-[#0a192f] mb-6 tracking-tight italic">Painel do Vereador</h3>
             <p className="text-[#0a192f]/50 max-w-md font-medium leading-relaxed italic text-lg">

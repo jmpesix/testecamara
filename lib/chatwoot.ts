@@ -6,52 +6,9 @@ const API_KEY = process.env.CHATWOOT_API_KEY;
 const BASE_URL = process.env.CHATWOOT_BASE_URL || 'https://app.chatwoot.com';
 const ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID;
 
-// Mock data for development when credentials are missing
-const MOCK_DATA = {
-  profile: { id: 1, name: 'Vereador Mock', email: 'vereador@exemplo.com' },
-  counts: { meta: { mine_count: 5, assigned_count: 8, unassigned_count: 2, all_count: 10 } },
-  teams: [{ id: 1, name: 'Gabinete Legislativo' }, { id: 2, name: 'Ouvidoria' }],
-  inbox: { id: 3, name: 'Câmara de SJB', channel_type: 'Channel::Whatsapp' },
-  canned_responses: [
-    { short_code: 'boasvindas', content: 'Olá! Sou o Vereador e recebi sua demanda. Em breve daremos um retorno oficial.' },
-    { short_code: 'encaminhado', content: 'Sua solicitação foi encaminhada para a secretaria competente para análise.' }
-  ],
-  conversations: [
-    {
-      id: 1,
-      status: 'open',
-      inbox_id: 3,
-      labels: ['Urgent'],
-      meta: { sender: { id: 101, name: 'João Silva' }, assignee: { name: 'Vereador Mock' } },
-      messages: [{ content: 'Gostaria de saber sobre a pavimentação da rua principal.', message_type: 'incoming', created_at: new Date().toISOString() }]
-    }
-  ],
-  sync: [
-    {
-      id: 1,
-      conversation_id: 1,
-      source: 'WhatsApp',
-      status: 'open',
-      assignee: 'Vereador Mock',
-      labels: ['Infraestrutura'],
-      inbox_id: 3,
-      contact_name: 'João Silva',
-      contact_id: 101,
-      message: 'Gostaria de saber sobre a pavimentação da rua principal.',
-      sentiment: 'neutro',
-      priority: 'alta',
-      theme: 'Obras',
-      resumo: 'Solicitação de pavimentação',
-      suggested_response: 'Olá João, já estamos verificando com a secretaria de obras.',
-      created_at: new Date().toISOString()
-    }
-  ]
-};
-
 export async function sendChatwootMessage(conversationId: string | number, content: string) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock send');
-    return { id: Math.random(), content, message_type: 'outgoing', created_at: new Date().toISOString() };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/messages`;
@@ -79,8 +36,7 @@ export async function sendChatwootMessage(conversationId: string | number, conte
 
 export async function updateChatwootConversationStatus(conversationId: string | number, status: 'open' | 'resolved' | 'pending' | 'snoozed') {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock update');
-    return { id: conversationId, status };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
@@ -104,16 +60,7 @@ export async function updateChatwootConversationStatus(conversationId: string | 
 
 export async function getChatwootReports(metric: string, type: string = 'account', params: any = {}) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock reports');
-    return {
-      data: [
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 4, value: '10' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 3, value: '15' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 2, value: '8' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 1, value: '20' },
-        { timestamp: Math.floor(Date.now() / 1000), value: '12' }
-      ]
-    };
+    return { data: [] };
   }
 
   const queryParams = new URLSearchParams({
@@ -134,18 +81,6 @@ export async function getChatwootReports(metric: string, type: string = 'account
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
-        console.warn(`Reports endpoint not found (404) at ${url}. Returning mock data.`);
-        return {
-          data: [
-            { timestamp: Math.floor(Date.now() / 1000) - 86400 * 4, value: Math.floor(Math.random() * 15 + 5).toString() },
-            { timestamp: Math.floor(Date.now() / 1000) - 86400 * 3, value: Math.floor(Math.random() * 15 + 5).toString() },
-            { timestamp: Math.floor(Date.now() / 1000) - 86400 * 2, value: Math.floor(Math.random() * 15 + 5).toString() },
-            { timestamp: Math.floor(Date.now() / 1000) - 86400 * 1, value: Math.floor(Math.random() * 15 + 5).toString() },
-            { timestamp: Math.floor(Date.now() / 1000), value: Math.floor(Math.random() * 15 + 5).toString() }
-          ]
-        };
-      }
       const contentType = response.headers.get('content-type');
       let errorMessage = `HTTP Error ${response.status} at ${url}`;
       if (contentType && contentType.includes('application/json')) {
@@ -166,31 +101,22 @@ export async function getChatwootReports(metric: string, type: string = 'account
     throw new Error(`Expected JSON but received: ${text.substring(0, 100)}... (URL: ${url})`);
   } catch (error) {
     console.error('Error fetching Chatwoot reports:', error);
-    // Return mock data on any fetch error to keep UI working
-    return {
-      data: [
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 4, value: '10' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 3, value: '15' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 2, value: '8' },
-        { timestamp: Math.floor(Date.now() / 1000) - 86400 * 1, value: '20' },
-        { timestamp: Math.floor(Date.now() / 1000), value: '12' }
-      ]
-    };
+    return { data: [] };
   }
 }
 
 export async function getChatwootReportsSummary(params: any = {}) {
-  const defaultSummary = {
-    avg_first_response_time: 1200,
-    avg_resolution_time: 3600,
-    conversations_count: 25,
-    incoming_messages_count: 150,
-    outgoing_messages_count: 140,
-    resolutions_count: 18
+  const emptySummary = {
+    avg_first_response_time: 0,
+    avg_resolution_time: 0,
+    conversations_count: 0,
+    incoming_messages_count: 0,
+    outgoing_messages_count: 0,
+    resolutions_count: 0
   };
 
   if (!API_KEY || !ACCOUNT_ID) {
-    return defaultSummary;
+    return emptySummary;
   }
 
   const queryParams = new URLSearchParams(params);
@@ -206,10 +132,6 @@ export async function getChatwootReportsSummary(params: any = {}) {
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
-        console.warn(`Reports summary endpoint not found (404) at ${url}. Returning mock data.`);
-        return defaultSummary;
-      }
       const contentType = response.headers.get('content-type');
       let errorMessage = `HTTP Error ${response.status} at ${url}`;
       if (contentType && contentType.includes('application/json')) {
@@ -230,7 +152,7 @@ export async function getChatwootReportsSummary(params: any = {}) {
     throw new Error(`Expected JSON but received: ${text.substring(0, 100)}... (URL: ${url})`);
   } catch (error) {
     console.error('Error fetching Chatwoot reports summary:', error);
-    return defaultSummary;
+    return emptySummary;
   }
 }
 
@@ -305,8 +227,7 @@ export async function getChatwootConversationMetrics(params: any = {}) {
 
 export async function updateChatwootConversationPriority(conversationId: string | number, priority: 'urgent' | 'high' | 'medium' | 'low' | null) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock update');
-    return { id: conversationId, priority };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}`;
@@ -330,8 +251,7 @@ export async function updateChatwootConversationPriority(conversationId: string 
 
 export async function addChatwootLabels(conversationId: string | number, labels: string[]) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock update');
-    return { id: conversationId, labels };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/labels`;
@@ -355,8 +275,7 @@ export async function addChatwootLabels(conversationId: string | number, labels:
 
 export async function getChatwootLabels(conversationId: string | number) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock labels');
-    return MOCK_DATA.conversations[0].labels;
+    return [];
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/labels`;
@@ -380,8 +299,7 @@ export async function getChatwootLabels(conversationId: string | number) {
 
 export async function updateChatwootCustomAttributes(conversationId: string | number, custom_attributes: Record<string, any>) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock update');
-    return { id: conversationId, custom_attributes };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/custom_attributes`;
@@ -405,8 +323,7 @@ export async function updateChatwootCustomAttributes(conversationId: string | nu
 
 export async function getChatwootProfile() {
   if (!API_KEY) {
-    console.warn('Chatwoot API Key missing, using mock profile');
-    return MOCK_DATA.profile;
+    throw new Error('Chatwoot API Key missing');
   }
 
   const url = `${BASE_URL}/api/v1/profile`;
@@ -429,8 +346,7 @@ export async function getChatwootProfile() {
 
 export async function updateChatwootProfile(profileData: Record<string, any>) {
   if (!API_KEY) {
-    console.warn('Chatwoot API Key missing, using mock update');
-    return { ...MOCK_DATA.profile, ...profileData };
+    throw new Error('Chatwoot API Key missing');
   }
 
   const url = `${BASE_URL}/api/v1/profile`;
@@ -454,8 +370,7 @@ export async function updateChatwootProfile(profileData: Record<string, any>) {
 
 export async function resolveChatwootConversation(conversationId: string | number) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock resolve');
-    return { id: conversationId, status: 'resolved' };
+    throw new Error('Chatwoot credentials missing');
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
@@ -481,8 +396,7 @@ export async function resolveChatwootConversation(conversationId: string | numbe
 
 export async function getChatwootMessages(conversationId: string | number) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock messages');
-    return MOCK_DATA.conversations[0].messages;
+    return [];
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/messages`;
@@ -530,8 +444,7 @@ export async function getChatwootInboxes() {
 
 export async function getChatwootConversations(filters: { inboxId?: string | number, teamId?: string | number, status?: string, assignee_type?: string, page?: number } = {}) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock conversations');
-    return MOCK_DATA.conversations;
+    return [];
   }
 
   const queryParams = new URLSearchParams();
@@ -562,8 +475,7 @@ export async function getChatwootConversations(filters: { inboxId?: string | num
 
 export async function getChatwootConversationDetails(conversationId: string | number) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock conversation details');
-    return MOCK_DATA.conversations.find(c => c.id.toString() === conversationId.toString()) || MOCK_DATA.conversations[0];
+    return null;
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}`;
@@ -587,8 +499,7 @@ export async function getChatwootConversationDetails(conversationId: string | nu
 
 export async function getChatwootCannedResponses() {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock canned responses');
-    return MOCK_DATA.canned_responses;
+    return [];
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/canned_responses`;
@@ -612,8 +523,7 @@ export async function getChatwootCannedResponses() {
 
 export async function getChatwootConversationCounts(filters: { inboxId?: string | number } = {}) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock counts');
-    return MOCK_DATA.counts;
+    return { meta: { mine_count: 0, assigned_count: 0, unassigned_count: 0, all_count: 0 } };
   }
 
   const queryParams = new URLSearchParams();
@@ -640,8 +550,7 @@ export async function getChatwootConversationCounts(filters: { inboxId?: string 
 
 export async function getChatwootTeams() {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock teams');
-    return MOCK_DATA.teams;
+    return [];
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/teams`;
@@ -665,8 +574,7 @@ export async function getChatwootTeams() {
 
 export async function getChatwootInbox(inboxId: string | number) {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock inbox');
-    return MOCK_DATA.inbox;
+    return null;
   }
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/inboxes/${inboxId}`;
@@ -729,8 +637,7 @@ export async function getChatwootPublicMessages(inboxIdentifier: string, contact
 
 export async function getChatwootAccountDetails() {
   if (!API_KEY || !ACCOUNT_ID) {
-    console.warn('Chatwoot credentials missing, using mock account details');
-    return { id: ACCOUNT_ID || 1, name: 'Câmara Municipal de SJB' };
+    return null;
   }
 
   const url = `${BASE_URL}/platform/api/v1/accounts/${ACCOUNT_ID}`;

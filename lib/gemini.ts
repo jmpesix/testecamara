@@ -6,14 +6,13 @@ const genAI = new GoogleGenerativeAI(API_KEY || '');
 
 export async function analyzeMessage(text: string, mode: 'triage' | 'suggest' | 'info' = 'triage') {
   if (!API_KEY) {
-    console.warn('GEMINI_API_KEY missing, using mock analysis');
     return {
       sentiment: 'neutro',
       priority: 'média',
       category: 'Geral',
-      summary: 'Demanda recebida via portal',
-      suggested_response: 'Olá! Recebemos sua mensagem e entraremos em contato em breve.',
-      info: 'Informação não disponível sem chave de API.'
+      summary: 'Análise indisponível (Chave AI não configurada)',
+      suggested_response: '',
+      info: 'Chave de API do Gemini não configurada.'
     };
   }
   
