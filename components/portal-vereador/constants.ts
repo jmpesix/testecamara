@@ -1,0 +1,15 @@
+export const VEREADORES = [
+  { id: 4, name: 'Alan de Grussaí' },
+  { id: 5, name: 'Analiel Vianna' },
+  { id: 6, name: 'Caio César' },
+  { id: 7, name: 'Elísio Rodrigues' },
+  { id: 8, name: 'Eziel Pedro' },
+  { id: 9, name: 'Joice Pedra' },
+  { id: 10, name: 'Julinho Peixoto' },
+  { id: 11, name: 'Júnior Monteiro' },
+  { id: 12, name: 'Kaká' },
+  { id: 13, name: 'Léo de Lolô' },
+  { id: 14, name: 'Rodrigo Machado' },
+  { id: 15, name: 'Rommenik' },
+  { id: 16, name: 'Soninha Pereira' },
+];

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { updateChatwootConversationPriority } from '@/lib/chatwoot';
+import { chatwootBroadcast } from '@/lib/chatwoot-broadcast';
 
 export async function POST(
   request: Request,
@@ -10,6 +11,10 @@ export async function POST(
     const { priority } = await request.json();
 
     const data = await updateChatwootConversationPriority(id, priority);
+    
+    // Notifica outros clientes que a prioridade mudou
+    chatwootBroadcast.notifyUpdate("priority_updated", { conversationId: id, priority });
+    
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error updating conversation priority:', error);

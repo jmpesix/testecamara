@@ -6,100 +6,81 @@ const API_KEY = process.env.CHATWOOT_API_KEY;
 const BASE_URL = process.env.CHATWOOT_BASE_URL || 'https://app.chatwoot.com';
 const ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID;
 
-export async function sendChatwootMessage(conversationId: string | number, content: string) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    throw new Error('Chatwoot credentials missing');
+async function chatwootFetch(url: string, options: RequestInit = {}) {
+  if (!API_KEY) {
+    throw new Error('Chatwoot API Key missing');
   }
 
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/messages`;
-
   const response = await fetch(url, {
-    method: 'POST',
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       'api_access_token': API_KEY,
+      ...(options.headers || {}),
     },
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const error = await response.json();
+      throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+    } else {
+      const text = await response.text();
+      // Trata o erro "Retry later" (Rate Limit) de forma específica
+      if (text.includes('Retry later')) {
+        throw new Error('Chatwoot Rate Limit: Muitas requisições. Tente novamente em alguns segundos.');
+      }
+      throw new Error(`Chatwoot API Error (${response.status}): ${text.substring(0, 100)}...`);
+    }
+  }
+
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return response.json();
+  }
+  return response.text();
+}
+
+export async function sendChatwootMessage(conversationId: string | number, content: string) {
+  if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
+  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/messages`;
+
+  return chatwootFetch(url, {
+    method: 'POST',
     body: JSON.stringify({
       content,
-      message_type: 'outgoing', // Mensagem do atendente/vereador
+      message_type: 'outgoing',
       private: false,
     }),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
-  }
-
-  return response.json();
 }
 
 export async function updateChatwootConversationStatus(conversationId: string | number, status: 'open' | 'resolved' | 'pending' | 'snoozed') {
-  if (!API_KEY || !ACCOUNT_ID) {
-    throw new Error('Chatwoot credentials missing');
-  }
-
+  if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
 
-  const response = await fetch(url, {
+  return chatwootFetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
     body: JSON.stringify({ status }),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
-  }
-
-  return response.json();
 }
 
 export async function getChatwootReports(metric: string, type: string = 'account', params: any = {}) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return { data: [] };
-  }
+  if (!ACCOUNT_ID) return { data: [] };
 
-  const queryParams = new URLSearchParams({
-    metric,
-    ...params
-  });
-
+  const queryParams = new URLSearchParams({ metric, ...params });
   const path = type === 'account' ? 'reports' : `reports/${type}`;
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/${path}?${queryParams.toString()}`;
 
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'api_access_token': API_KEY,
-      },
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      let errorMessage = `HTTP Error ${response.status} at ${url}`;
-      if (contentType && contentType.includes('application/json')) {
-        const error = await response.json();
-        errorMessage = `Chatwoot API Error: ${JSON.stringify(error)} (URL: ${url})`;
-      } else {
-        const text = await response.text();
-        errorMessage = `Chatwoot API Error (${response.status}): ${text.substring(0, 100)}... (URL: ${url})`;
-      }
-      throw new Error(errorMessage);
+    const json = await chatwootFetch(url);
+    return json;
+  } catch (error: any) {
+    if (error.message.includes('404')) {
+      console.warn(`Chatwoot reports not found (404) at ${url}`);
+      return { data: [] };
     }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return response.json();
-    }
-    const text = await response.text();
-    throw new Error(`Expected JSON but received: ${text.substring(0, 100)}... (URL: ${url})`);
-  } catch (error) {
     console.error('Error fetching Chatwoot reports:', error);
     return { data: [] };
   }
@@ -115,42 +96,18 @@ export async function getChatwootReportsSummary(params: any = {}) {
     resolutions_count: 0
   };
 
-  if (!API_KEY || !ACCOUNT_ID) {
-    return emptySummary;
-  }
-
+  if (!ACCOUNT_ID) return emptySummary;
   const queryParams = new URLSearchParams(params);
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/reports/summary?${queryParams.toString()}`;
 
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'api_access_token': API_KEY,
-      },
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      let errorMessage = `HTTP Error ${response.status} at ${url}`;
-      if (contentType && contentType.includes('application/json')) {
-        const error = await response.json();
-        errorMessage = `Chatwoot API Error: ${JSON.stringify(error)} (URL: ${url})`;
-      } else {
-        const text = await response.text();
-        errorMessage = `Chatwoot API Error (${response.status}): ${text.substring(0, 100)}... (URL: ${url})`;
-      }
-      throw new Error(errorMessage);
+    const json = await chatwootFetch(url);
+    return json;
+  } catch (error: any) {
+    if (error.message.includes('404')) {
+      console.warn(`Chatwoot reports summary not found (404) at ${url}`);
+      return emptySummary;
     }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return response.json();
-    }
-    const text = await response.text();
-    throw new Error(`Expected JSON but received: ${text.substring(0, 100)}... (URL: ${url})`);
-  } catch (error) {
     console.error('Error fetching Chatwoot reports summary:', error);
     return emptySummary;
   }
@@ -226,75 +183,36 @@ export async function getChatwootConversationMetrics(params: any = {}) {
 }
 
 export async function updateChatwootConversationPriority(conversationId: string | number, priority: 'urgent' | 'high' | 'medium' | 'low' | null) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    throw new Error('Chatwoot credentials missing');
-  }
-
+  if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}`;
 
-  const response = await fetch(url, {
+  return chatwootFetch(url, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
     body: JSON.stringify({ priority }),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
-  }
-
-  return response.json();
 }
 
 export async function addChatwootLabels(conversationId: string | number, labels: string[]) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    throw new Error('Chatwoot credentials missing');
-  }
-
+  if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/labels`;
 
-  const response = await fetch(url, {
+  return chatwootFetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
     body: JSON.stringify({ labels }),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
-  }
-
-  return response.json();
 }
 
 export async function getChatwootLabels(conversationId: string | number) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return [];
-  }
-
+  if (!ACCOUNT_ID) return [];
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/labels`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  try {
+    const json = await chatwootFetch(url);
+    return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  } catch (error) {
+    console.error('Error fetching Chatwoot labels:', error);
+    return [];
   }
-
-  const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
 }
 
 export async function updateChatwootCustomAttributes(conversationId: string | number, custom_attributes: Record<string, any>) {
@@ -395,27 +313,16 @@ export async function resolveChatwootConversation(conversationId: string | numbe
 }
 
 export async function getChatwootMessages(conversationId: string | number) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return [];
-  }
-
+  if (!ACCOUNT_ID) return [];
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/messages`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  try {
+    const json = await chatwootFetch(url);
+    return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  } catch (error) {
+    console.error('Error fetching Chatwoot messages:', error);
+    return [];
   }
-
-  const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
 }
 
 export async function getChatwootInboxes() {
@@ -443,9 +350,7 @@ export async function getChatwootInboxes() {
 }
 
 export async function getChatwootConversations(filters: { inboxId?: string | number, teamId?: string | number, status?: string, assignee_type?: string, page?: number } = {}) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return [];
-  }
+  if (!ACCOUNT_ID) return [];
 
   const queryParams = new URLSearchParams();
   if (filters.inboxId) queryParams.append('inbox_id', filters.inboxId.toString());
@@ -456,45 +361,26 @@ export async function getChatwootConversations(filters: { inboxId?: string | num
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations?${queryParams.toString()}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  try {
+    const json = await chatwootFetch(url);
+    return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  } catch (error) {
+    console.error('Error fetching Chatwoot conversations:', error);
+    return [];
   }
-
-  const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
 }
 
 export async function getChatwootConversationDetails(conversationId: string | number) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return null;
-  }
-
+  if (!ACCOUNT_ID) return null;
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  try {
+    const json = await chatwootFetch(url);
+    return json.data?.payload || json.payload || json;
+  } catch (error) {
+    console.error('Error fetching Chatwoot conversation details:', error);
+    return null;
   }
-
-  const json = await response.json();
-  return json.data?.payload || json.payload || json;
 }
 
 export async function getChatwootCannedResponses() {
@@ -522,30 +408,20 @@ export async function getChatwootCannedResponses() {
 }
 
 export async function getChatwootConversationCounts(filters: { inboxId?: string | number } = {}) {
-  if (!API_KEY || !ACCOUNT_ID) {
-    return { meta: { mine_count: 0, assigned_count: 0, unassigned_count: 0, all_count: 0 } };
-  }
+  if (!ACCOUNT_ID) return { meta: { mine_count: 0, assigned_count: 0, unassigned_count: 0, all_count: 0 } };
 
   const queryParams = new URLSearchParams();
   if (filters.inboxId) queryParams.append('inbox_id', filters.inboxId.toString());
 
   const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/meta?${queryParams.toString()}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  try {
+    const json = await chatwootFetch(url);
+    return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  } catch (error) {
+    console.error('Chatwoot Conversation Counts Error:', error);
+    return { meta: { mine_count: 0, assigned_count: 0, unassigned_count: 0, all_count: 0 } };
   }
-
-  const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
 }
 
 export async function getChatwootTeams() {

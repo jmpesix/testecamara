@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { addChatwootLabels, getChatwootLabels } from '@/lib/chatwoot';
+import { chatwootBroadcast } from '@/lib/chatwoot-broadcast';
 
 export async function GET(
   request: Request,
@@ -28,6 +29,10 @@ export async function POST(
     }
 
     const data = await addChatwootLabels(id, labels);
+    
+    // Notifica outros clientes que as etiquetas mudaram
+    chatwootBroadcast.notifyUpdate("labels_updated", { conversationId: id, labels });
+    
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error adding labels:', error);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { updateChatwootConversationStatus } from '@/lib/chatwoot';
+import { chatwootBroadcast } from '@/lib/chatwoot-broadcast';
 
 export async function POST(
   request: Request,
@@ -14,6 +15,10 @@ export async function POST(
     }
 
     const data = await updateChatwootConversationStatus(id, status);
+    
+    // Notifica outros clientes que o status mudou
+    chatwootBroadcast.notifyUpdate("status_updated", { conversationId: id, status });
+    
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error updating conversation status:', error);

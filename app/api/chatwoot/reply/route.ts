@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendChatwootMessage, resolveChatwootConversation } from '@/lib/chatwoot';
+import { chatwootBroadcast } from '@/lib/chatwoot-broadcast';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +17,9 @@ export async function POST(req: NextRequest) {
     if (resolve) {
       await resolveChatwootConversation(conversationId);
     }
+
+    // Notifica outros clientes que houve uma nova mensagem/resposta
+    chatwootBroadcast.notifyUpdate("message_sent", { conversationId });
 
     return NextResponse.json({ success: true, messageResult });
   } catch (error: any) {
