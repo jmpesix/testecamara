@@ -1,3 +1,4 @@
+import { upsertAtendimento, getSupabaseClient } from './supabase';
 /**
  * Chatwoot API Client (Server Side)
  */
@@ -5,6 +6,21 @@
 const API_KEY = process.env.CHATWOOT_API_KEY;
 const BASE_URL = process.env.CHATWOOT_BASE_URL || 'https://app.chatwoot.com';
 const ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID;
+
+const cache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+function getCached(key: string) {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setCached(key: string, data: any) {
+  cache.set(key, { data, timestamp: Date.now() });
+}
 
 async function chatwootFetch(url: string, options: RequestInit = {}) {
   if (!API_KEY) {
@@ -58,129 +74,21 @@ export async function sendChatwootMessage(conversationId: string | number, conte
 
 export async function updateChatwootConversationStatus(conversationId: string | number, status: 'open' | 'resolved' | 'pending' | 'snoozed') {
   if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
-
-  return chatwootFetch(url, {
-    method: 'POST',
-    body: JSON.stringify({ status }),
-  });
-}
-
-export async function getChatwootReports(metric: string, type: string = 'account', params: any = {}) {
-  if (!ACCOUNT_ID) return { data: [] };
-
-  const queryParams = new URLSearchParams({ metric, ...params });
-  const path = type === 'account' ? 'reports' : `reports/${type}`;
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/${path}?${queryParams.toString()}`;
-
-  try {
-    const json = await chatwootFetch(url);
-    return json;
-  } catch (error: any) {
-    if (error.message.includes('404')) {
-      console.warn(`Chatwoot reports not found (404) at ${url}`);
-      return { data: [] };
-    }
-    console.error('Error fetching Chatwoot reports:', error);
-    return { data: [] };
-  }
-}
-
-export async function getChatwootReportsSummary(params: any = {}) {
-  const emptySummary = {
-    avg_first_response_time: 0,
-    avg_resolution_time: 0,
-    conversations_count: 0,
-    incoming_messages_count: 0,
-    outgoing_messages_count: 0,
-    resolutions_count: 0
-  };
-
-  if (!ACCOUNT_ID) return emptySummary;
-  const queryParams = new URLSearchParams(params);
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/reports/summary?${queryParams.toString()}`;
-
-  try {
-    const json = await chatwootFetch(url);
-    return json;
-  } catch (error: any) {
-    if (error.message.includes('404')) {
-      console.warn(`Chatwoot reports summary not found (404) at ${url}`);
-      return emptySummary;
-    }
-    console.error('Error fetching Chatwoot reports summary:', error);
-    return emptySummary;
-  }
-}
-
-export async function getChatwootTeamSummary(params: any = {}) {
-  if (!API_KEY || !ACCOUNT_ID) return [];
-  const queryParams = new URLSearchParams(params);
-  const url = `${BASE_URL}/api/v2/accounts/${ACCOUNT_ID}/summary_reports/team?${queryParams.toString()}`;
-  try {
-    const response = await fetch(url, {
-      headers: { 'api_access_token': API_KEY }
-    });
-    return response.ok ? response.json() : [];
-  } catch (error) {
-    console.error('Error fetching team summary:', error);
-    return [];
-  }
-}
-
-export async function getChatwootChannelSummary(params: any = {}) {
-  if (!API_KEY || !ACCOUNT_ID) return [];
-  const queryParams = new URLSearchParams(params);
-  const url = `${BASE_URL}/api/v2/accounts/${ACCOUNT_ID}/summary_reports/channel?${queryParams.toString()}`;
-  try {
-    const response = await fetch(url, {
-      headers: { 'api_access_token': API_KEY }
-    });
-    return response.ok ? response.json() : [];
-  } catch (error) {
-    console.error('Error fetching channel summary:', error);
-    return [];
-  }
-}
-
-export async function getChatwootFirstResponseDistribution(params: any = {}) {
-  if (!API_KEY || !ACCOUNT_ID) return {};
-  const queryParams = new URLSearchParams(params);
-  const url = `${BASE_URL}/api/v2/accounts/${ACCOUNT_ID}/reports/first_response_time_distribution?${queryParams.toString()}`;
-  try {
-    const response = await fetch(url, {
-      headers: { 'api_access_token': API_KEY }
-    });
-    return response.ok ? response.json() : {};
-  } catch (error) {
-    console.error('Error fetching response distribution:', error);
-    return {};
-  }
-}
-
-// Funções especializadas de relatório baseadas na API
-export async function getAgentReports(params: any = {}) {
-  return getChatwootReports('conversations_count', 'agent', params);
-}
-
-export async function getInboxReports(params: any = {}) {
-  return getChatwootReports('conversations_count', 'inbox', params);
-}
-
-export async function getTeamReports(params: any = {}) {
-  return getChatwootReports('conversations_count', 'team', params);
-}
-
-export async function getChatwootConversationMetrics(params: any = {}) {
-  if (!API_KEY || !ACCOUNT_ID) return { conversations: [] };
-  const queryParams = new URLSearchParams(params);
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/reports/conversations?${queryParams.toString()}`;
   
-  const response = await fetch(url, {
-    headers: { 'api_access_token': API_KEY }
-  });
-  return response.ok ? response.json() : { conversations: [] };
+  // Directly update database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    await supabase
+      .from('atendimentos_camara')
+      .update({ status })
+      .eq('account_id', Number(ACCOUNT_ID))
+      .eq('conversation_id', Number(conversationId));
+  }
+  
+  return { status: 'success' };
 }
+
+
 
 export async function updateChatwootConversationPriority(conversationId: string | number, priority: 'urgent' | 'high' | 'medium' | 'low' | null) {
   if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
@@ -194,12 +102,18 @@ export async function updateChatwootConversationPriority(conversationId: string 
 
 export async function addChatwootLabels(conversationId: string | number, labels: string[]) {
   if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/labels`;
-
-  return chatwootFetch(url, {
-    method: 'POST',
-    body: JSON.stringify({ labels }),
-  });
+  
+  // Directly update database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    await supabase
+      .from('atendimentos_camara')
+      .update({ labels })
+      .eq('account_id', Number(ACCOUNT_ID))
+      .eq('conversation_id', Number(conversationId));
+  }
+  
+  return { status: 'success' };
 }
 
 export async function getChatwootLabels(conversationId: string | number) {
@@ -220,26 +134,39 @@ export async function updateChatwootCustomAttributes(conversationId: string | nu
     throw new Error('Chatwoot credentials missing');
   }
 
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/custom_attributes`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-    body: JSON.stringify({ custom_attributes }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  // Directly update database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    await supabase
+      .from('atendimentos_camara')
+      .update({ custom_attributes })
+      .eq('account_id', Number(ACCOUNT_ID))
+      .eq('conversation_id', Number(conversationId));
   }
 
-  return response.json();
+  return { status: 'success' };
+}
+
+export async function assignChatwootTeam(conversationId: string | number, teamId: string | number | null) {
+  if (!ACCOUNT_ID) throw new Error('Chatwoot Account ID missing');
+  
+  // Directly update database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    await supabase
+      .from('atendimentos_camara')
+      .update({ team_id: teamId })
+      .eq('account_id', Number(ACCOUNT_ID))
+      .eq('conversation_id', Number(conversationId));
+  }
+  
+  return { status: 'success' };
 }
 
 export async function getChatwootProfile() {
+  const cached = getCached('profile');
+  if (cached) return cached;
+  
   if (!API_KEY) {
     throw new Error('Chatwoot API Key missing');
   }
@@ -259,7 +186,9 @@ export async function getChatwootProfile() {
     throw new Error(`Chatwoot Profile API Error: ${JSON.stringify(error)}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  setCached('profile', data);
+  return data;
 }
 
 export async function updateChatwootProfile(profileData: Record<string, any>) {
@@ -291,25 +220,17 @@ export async function resolveChatwootConversation(conversationId: string | numbe
     throw new Error('Chatwoot credentials missing');
   }
 
-  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': API_KEY,
-    },
-    body: JSON.stringify({
-      status: 'resolved',
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
+  // Directly update database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    await supabase
+      .from('atendimentos_camara')
+      .update({ status: 'resolved' })
+      .eq('account_id', Number(ACCOUNT_ID))
+      .eq('conversation_id', Number(conversationId));
   }
 
-  return response.json();
+  return { status: 'success' };
 }
 
 export async function getChatwootMessages(conversationId: string | number) {
@@ -384,6 +305,9 @@ export async function getChatwootConversationDetails(conversationId: string | nu
 }
 
 export async function getChatwootCannedResponses() {
+  const cached = getCached('cannedResponses');
+  if (cached) return cached;
+
   if (!API_KEY || !ACCOUNT_ID) {
     return [];
   }
@@ -404,7 +328,9 @@ export async function getChatwootCannedResponses() {
   }
 
   const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  const data = json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  setCached('cannedResponses', data);
+  return data;
 }
 
 export async function getChatwootConversationCounts(filters: { inboxId?: string | number } = {}) {
@@ -425,6 +351,9 @@ export async function getChatwootConversationCounts(filters: { inboxId?: string 
 }
 
 export async function getChatwootTeams() {
+  const cached = getCached('teams');
+  if (cached) return cached;
+
   if (!API_KEY || !ACCOUNT_ID) {
     return [];
   }
@@ -445,10 +374,15 @@ export async function getChatwootTeams() {
   }
 
   const json = await response.json();
-  return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  const data = json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+  setCached('teams', data);
+  return data;
 }
 
 export async function getChatwootInbox(inboxId: string | number) {
+  const cached = getCached(`inbox_${inboxId}`);
+  if (cached) return cached;
+
   if (!API_KEY || !ACCOUNT_ID) {
     return null;
   }
@@ -468,7 +402,9 @@ export async function getChatwootInbox(inboxId: string | number) {
     throw new Error(`Chatwoot API Error: ${JSON.stringify(error)}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  setCached(`inbox_${inboxId}`, data);
+  return data;
 }
 
 export async function getChatwootPublicConversations(inboxIdentifier: string, contactIdentifier: string) {
@@ -533,5 +469,33 @@ export async function getChatwootAccountDetails() {
 
   const json = await response.json();
   return json.data?.payload || json.payload || (Array.isArray(json.data) ? json.data : json);
+}
+
+export async function getChatwootAuditLogs(page: number = 1) {
+  if (!ACCOUNT_ID || !API_KEY) return [];
+  
+  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/audit_logs?page=${page}`;
+  
+  try {
+    const json = await chatwootFetch(url);
+    // Chatwoot audit logs structure is usually { payload: [...] }
+    return json.payload || json.data || (Array.isArray(json) ? json : []);
+  } catch (error) {
+    console.error('Error fetching Chatwoot audit logs:', error);
+    return [];
+  }
+}
+
+export async function getChatwootAccountLabels() {
+  if (!ACCOUNT_ID) return [];
+  const url = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/labels`;
+
+  try {
+    const json = await chatwootFetch(url);
+    return json.payload || json.data || (Array.isArray(json) ? json : []);
+  } catch (error) {
+    console.error('Error fetching Chatwoot account labels:', error);
+    return [];
+  }
 }
 

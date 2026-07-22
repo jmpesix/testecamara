@@ -24,7 +24,7 @@ export default function PortalVereador() {
   return (
     <div className="h-screen w-screen flex bg-slate-50 overflow-hidden font-sans select-none">
       <Sidebar 
-        messages={data.messages}
+        conversas={data.conversas}
         mainView={data.mainView}
         setMainView={data.setMainView}
         gabinetesExpanded={data.gabinetesExpanded}
@@ -39,10 +39,16 @@ export default function PortalVereador() {
         setSelectedMessage={data.setSelectedMessage}
         setInboxSubFilter={data.setInboxSubFilter}
         userProfile={data.userProfile}
+        labels={data.labels}
+        selectedLabel={data.selectedLabel}
+        setSelectedLabel={data.setSelectedLabel}
+        teams={data.teams}
+        selectedTeamId={data.selectedTeamId}
+        setSelectedTeamId={data.setSelectedTeamId}
       />
 
       <ConversationList 
-        messages={data.messages}
+        conversas={data.conversas}
         selectedMessage={data.selectedMessage}
         setSelectedMessage={data.setSelectedMessage}
         inboxSubFilter={data.inboxSubFilter}
@@ -52,6 +58,8 @@ export default function PortalVereador() {
         inboxFilter={data.inboxFilter}
         loading={data.loading}
         reportSummary={data.reportSummary}
+        selectedLabel={data.selectedLabel}
+        selectedTeamId={data.selectedTeamId}
       />
 
       {data.mainView === 'reports' ? (
@@ -61,11 +69,20 @@ export default function PortalVereador() {
           setReportTab={data.setReportTab}
           reportRange={data.reportRange}
           setReportRange={data.setReportRange}
+          customDateRange={data.customDateRange}
+          setCustomDateRange={data.setCustomDateRange}
           reportSummary={data.reportSummary}
           reportDaily={data.reportDaily}
-          reportDetail={data.reportDetail}
+          reportTeams={data.reportTeams}
+          reportChannels={data.reportChannels}
+          reportDistribution={data.reportDistribution}
+          reportConversations={data.reportConversations}
           loadingReports={data.loadingReports}
           teams={data.teams}
+          auditLogs={data.auditLogs}
+          labels={data.labels}
+          loadingLabels={data.loadingLabels}
+          fetchLabels={data.fetchLabels}
         />
       ) : (
         <ChatWindow 
@@ -92,10 +109,14 @@ export default function PortalVereador() {
           setAiInfo={data.setAiInfo}
           showAiMenu={data.showAiMenu}
           setShowAiMenu={data.setShowAiMenu}
+          teams={data.teams}
           handleUpdateStatus={data.handleUpdateStatus}
           handleAnalyze={data.handleAnalyze}
           handleSendReply={data.handleSendReply}
           handleAddLabel={data.handleAddLabel}
+          handleAssignTeam={data.handleAssignTeam}
+          contactConversations={data.contactConversations}
+          loadingContactHistory={data.loadingContactHistory}
         />
       )}
     </div>

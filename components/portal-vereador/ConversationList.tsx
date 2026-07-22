@@ -1,14 +1,14 @@
 'use client';
 
 import React from 'react';
-import { RefreshCw, Shield } from 'lucide-react';
+import { RefreshCw, Shield, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { Message } from '@/types';
 import { VEREADORES } from './constants';
 
 interface ConversationListProps {
-  messages: Message[];
+  conversas: Message[];
   selectedMessage: Message | null;
   setSelectedMessage: (msg: Message | null) => void;
   inboxSubFilter: 'mine' | 'unassigned' | 'all' | 'resolved';
@@ -18,17 +18,26 @@ interface ConversationListProps {
   inboxFilter: number | null;
   loading: boolean;
   reportSummary: any;
+  selectedLabel: string | null;
+  selectedTeamId: number | null;
 }
 
-const safeFormatDate = (dateString: string | undefined) => {
-  if (!dateString) return 'now';
+const safeFormatTime = (dateString: string | undefined) => {
+  if (!dateString) return '--:--';
   const date = new Date(dateString);
-  if (isNaN(date.getTime())) return 'now';
+  if (isNaN(date.getTime())) return '--:--';
   return format(date, 'HH:mm');
 };
 
+const safeFormatDateOnly = (dateString: string | undefined) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  return format(date, 'dd/MM/yy');
+};
+
 export function ConversationList({
-  messages,
+  conversas,
   selectedMessage,
   setSelectedMessage,
   inboxSubFilter,
@@ -38,21 +47,31 @@ export function ConversationList({
   inboxFilter,
   loading,
   reportSummary,
+  selectedLabel,
+  selectedTeamId,
 }: ConversationListProps) {
 
-  const filteredMessages = messages.filter(msg => {
-    const isArchived = msg.labels && msg.labels.includes('portal-arquivado');
+  const filteredMessages = conversas.filter(msg => {
+    // Filtro Global por Etiqueta
+    if (selectedLabel && (!msg.labels || !msg.labels.includes(selectedLabel))) return false;
+
+    // Filtro Global por Time
+    if (selectedTeamId && msg.team_id !== selectedTeamId) return false;
+
+    const isArchived = msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido');
 
     // Filtro por visualização principal
     if (mainView === 'resolved') {
       // Na aba de resolvidos, mostramos o que foi arquivado pelo portal
       if (!isArchived) return false;
     } else if (mainView === 'all') {
-      // Na visualização principal (Fluxo Central), mostramos o que NÃO está arquivado
+      // No Portal Geral, mostramos o que NÃO está arquivado
       if (isArchived) return false;
     }
 
-    if (mainView === 'all' && msg.inbox_id !== 3) return false;
+    // Se estivermos no Portal Geral, mostramos tudo que passou nos filtros acima
+    if (mainView === 'all') return true;
+
     if (mainView === 'vereadores') {
       if (selectedVereador) {
         const v = VEREADORES.find(v => v.name === selectedVereador);
@@ -89,22 +108,33 @@ export function ConversationList({
       <div className="p-8 border-b border-[#c5a059]/10 bg-[#fdfcf9] min-w-[400px]">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-serif text-xl font-bold text-[#0a192f] tracking-tight">
-              {mainView === 'all' && 'Fluxo Central'}
-              {mainView === 'vereadores' && (
+            <h2 className="font-serif text-xl font-bold text-[#0a192f] tracking-tight flex items-center gap-2">
+              {selectedLabel ? `Etiqueta: ${selectedLabel}` : 
+               selectedTeamId ? `Time: ${VEREADORES.find(v => v.id === selectedTeamId)?.name || 'Especializado'}` :
+               mainView === 'all' ? 'Portal Geral' :
+               mainView === 'vereadores' ? (
                 selectedVereador 
                   ? (['Joice Pedra', 'Soninha Pereira'].includes(selectedVereador) ? `Vereadora ${selectedVereador}` : `Vereador ${selectedVereador}`)
                   : 'Gabinete Legislativo'
-              )}
-              {mainView === 'duvidas' && 'Informações'}
-              {mainView === 'reclamacoes' && 'Ouvidoria'}
-              {mainView === 'resolved' && 'Resolvidos'}
+               ) :
+               mainView === 'duvidas' ? 'Informações' :
+               mainView === 'reclamacoes' ? 'Ouvidoria' :
+               mainView === 'resolved' ? 'Arquivados' : ''
+              }
+              {loading && <Loader2 className="w-4 h-4 text-[#c5a059] animate-spin ml-2" />}
             </h2>
             <div className="flex items-center gap-2 mt-1">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Protocolos Ativos</span>
             </div>
           </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="p-2 hover:bg-[#c5a059]/10 rounded-full transition-colors text-[#c5a059]"
+            title="Recarregar Portal"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
         {mainView === 'all' ? (
@@ -126,7 +156,7 @@ export function ConversationList({
           <div className="flex items-center gap-6">
             {[
               { id: 'mine', label: 'Meus Protocolos' },
-              { id: 'resolved', label: 'Resolvidos' }
+              { id: 'resolved', label: 'Arquivados' }
             ].map((tab) => (
               <button 
                 key={tab.id}
@@ -142,7 +172,7 @@ export function ConversationList({
           <div className="flex items-center gap-6">
             {[
               { id: 'mine', label: 'Meus Protocolos' },
-              { id: 'resolved', label: 'Resolvidos' }
+              { id: 'resolved', label: 'Arquivados' }
             ].map((tab) => (
               <button 
                 key={tab.id}
@@ -164,7 +194,7 @@ export function ConversationList({
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#fcfaf5]">
-        {loading ? (
+        {loading && filteredMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <RefreshCw className="w-8 h-8 text-[#c5a059] animate-spin" />
             <p className="font-serif italic text-slate-500 text-sm">Consultando anais legislativos...</p>
@@ -189,11 +219,23 @@ export function ConversationList({
                   {msg.contact_name ? msg.contact_name.substring(0, 1).toUpperCase() : 'P'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-serif font-bold text-sm text-[#0a192f] truncate">{msg.contact_name || 'Protocolo Reservado'}</span>
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded">
-                      {safeFormatDate(msg.created_at)}
-                    </span>
+                  <div className="flex justify-between items-start mb-0.5">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="font-serif font-bold text-sm text-[#0a192f] truncate">
+                        {msg.contact_name || 'Protocolo Reservado'}
+                      </span>
+                      <span className="text-[10px] font-black text-[#c5a059]/60 uppercase tracking-widest whitespace-nowrap">
+                        #{msg.conversation_id || msg.id}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 ml-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded leading-none">
+                        {safeFormatTime(msg.created_at)}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-400/70 uppercase tracking-tighter leading-none pr-1">
+                        {safeFormatDateOnly(msg.created_at)}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-[11px] text-slate-600 mb-3 line-clamp-2 leading-relaxed italic opacity-80">
                     &quot;{msg.message}&quot;
@@ -208,19 +250,19 @@ export function ConversationList({
                     </div>
                     <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
                       <div className={`w-1.5 h-1.5 rounded-full ${
-                        msg.labels && msg.labels.includes('portal-arquivado') ? 'bg-slate-500' :
-                        msg.status === 'resolved' ? 'bg-emerald-500 animate-pulse' : 
+                        msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido') ? 'bg-slate-500' :
+                        msg.status === 'resolved' ? 'bg-amber-500 animate-pulse' : 
                         msg.status === 'open' ? 'bg-[#c5a059]' : 
                         msg.status === 'pending' ? 'bg-amber-500' : 'bg-slate-300'
                       }`} />
                       <span className={
-                        msg.labels && msg.labels.includes('portal-arquivado') ? 'text-slate-500' :
-                        msg.status === 'resolved' ? 'text-emerald-600' : 
+                        msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido') ? 'text-slate-500' :
+                        (msg.status === 'resolved' || msg.status === 'AGUARDANDO RESOLUÇÃO') ? 'text-amber-600 font-bold' : 
                         msg.status === 'open' ? 'text-[#c5a059]' : 
                         msg.status === 'pending' ? 'text-amber-600' : 'text-slate-400'
                       }>
-                        {msg.labels && msg.labels.includes('portal-arquivado') ? 'Arquivada' :
-                         msg.status === 'resolved' ? 'Pendente Arquivo' : 
+                        {msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido') ? 'Arquivada' :
+                         (msg.status === 'resolved' || msg.status === 'AGUARDANDO RESOLUÇÃO') ? 'Aguardando Resolução' : 
                          msg.status === 'open' ? 'Aberta' : 
                          msg.status === 'pending' ? 'Pendente' : 'Adiada'}
                       </span>

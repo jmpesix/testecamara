@@ -16,7 +16,7 @@ import { Message } from '@/types';
 import { VEREADORES } from './constants';
 
 interface SidebarProps {
-  messages: Message[];
+  conversas: Message[];
   mainView: 'all' | 'vereadores' | 'duvidas' | 'reclamacoes' | 'resolved' | 'reports';
   setMainView: (view: 'all' | 'vereadores' | 'duvidas' | 'reclamacoes' | 'resolved' | 'reports') => void;
   gabinetesExpanded: boolean;
@@ -25,16 +25,22 @@ interface SidebarProps {
   setSelectedVereador: (v: string | null) => void;
   reportsExpanded: boolean;
   setReportsExpanded: (expanded: boolean) => void;
-  reportTab: 'visao-geral' | 'conversas' | 'etiquetas' | 'inbox' | 'time' | 'sla' | 'robos';
-  setReportTab: (tab: 'visao-geral' | 'conversas' | 'etiquetas' | 'inbox' | 'time' | 'sla' | 'robos') => void;
+  reportTab: 'visao-geral' | 'conversas' | 'assuntos-recorrentes' | 'inbox' | 'time' | 'sla' | 'robos' | 'auditoria';
+  setReportTab: (tab: 'visao-geral' | 'conversas' | 'assuntos-recorrentes' | 'inbox' | 'time' | 'sla' | 'robos' | 'auditoria') => void;
   reportSummary: any;
   setSelectedMessage: (msg: Message | null) => void;
   setInboxSubFilter: (filter: 'mine' | 'unassigned' | 'all' | 'resolved') => void;
   userProfile: any;
+  labels: any[];
+  selectedLabel: string | null;
+  setSelectedLabel: (label: string | null) => void;
+  teams: any[];
+  selectedTeamId: number | null;
+  setSelectedTeamId: (teamId: number | null) => void;
 }
 
 export function Sidebar({
-  messages,
+  conversas,
   mainView,
   setMainView,
   gabinetesExpanded,
@@ -49,6 +55,12 @@ export function Sidebar({
   setSelectedMessage,
   setInboxSubFilter,
   userProfile,
+  labels,
+  selectedLabel,
+  setSelectedLabel,
+  teams,
+  selectedTeamId,
+  setSelectedTeamId,
 }: SidebarProps) {
   return (
     <>
@@ -88,22 +100,22 @@ export function Sidebar({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pt-6 space-y-6">
           <div>
             <span className="text-[10px] font-black text-[#c5a059]/50 uppercase tracking-[0.2em] px-4 block mb-4">
               Painel do Vereador
             </span>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {[
                 { id: 'all', icon: Hash, label: 'Portal Geral', sublabel: 'Todas as Demandas' },
                 { id: 'vereadores', icon: Users, label: 'Gabinete Legislativo', sublabel: 'Vereadores Ativos' },
                 { id: 'duvidas', icon: AtSign, label: 'Dúvidas e Informações', sublabel: 'Informações Oficiais' },
                 { id: 'reclamacoes', icon: Clock, label: 'Ouvidoria de Reclamações', sublabel: 'Reclamações e Críticas' },
-                { id: 'resolved', icon: CheckCheck, label: 'Protocolos Resolvidos', sublabel: 'Casos Resolvidos' }
+                { id: 'resolved', icon: CheckCheck, label: 'Protocolos Arquivados', sublabel: 'Casos Arquivados' }
               ].map((item) => {
                 const isVereadores = item.id === 'vereadores';
-                const itemCount = messages.filter(msg => {
-                  const isArchived = msg.labels && msg.labels.includes('portal-arquivado');
+                const itemCount = conversas.filter(msg => {
+                  const isArchived = msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido');
                   
                   if (item.id === 'resolved') return isArchived;
                   if (isArchived) return false;
@@ -137,10 +149,12 @@ export function Sidebar({
                             setInboxSubFilter('mine');
                           }
                         }
+                        setSelectedLabel(null);
+                        setSelectedTeamId(null);
                         setMainView(item.id as any);
                         setReportsExpanded(false);
                       }}
-                      className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
+                      className={`w-full flex flex-col px-4 py-3.5 rounded-2xl transition-all group border ${
                         mainView === item.id 
                           ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
                           : 'hover:bg-white/5 border-transparent text-slate-400'
@@ -169,7 +183,7 @@ export function Sidebar({
                     {isVereadores && gabinetesExpanded && (
                       <div className="pl-10 space-y-1 py-1">
                         {VEREADORES.map((v) => {
-                          const vCount = messages.filter(msg => msg.team_id === v.id && !(msg.labels && msg.labels.includes('portal-arquivado'))).length;
+                          const vCount = conversas.filter(msg => msg.team_id === v.id && !(msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido'))).length;
                           return (
                             <button
                               key={v.id}
@@ -201,7 +215,7 @@ export function Sidebar({
             </div>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-2">
             <button 
               onClick={() => {
                 setReportsExpanded(!reportsExpanded);
@@ -209,7 +223,7 @@ export function Sidebar({
                 setMainView('reports');
                 setSelectedMessage(null);
               }}
-              className={`w-full flex flex-col px-4 py-3 rounded-2xl transition-all group border ${
+              className={`w-full flex flex-col px-4 py-3.5 rounded-2xl transition-all group border ${
                 mainView === 'reports' 
                   ? 'bg-[#c5a059]/10 border-[#c5a059]/30 text-white shadow-lg' 
                   : 'hover:bg-white/5 border-transparent text-slate-400'
@@ -228,10 +242,10 @@ export function Sidebar({
               <div className="pl-10 space-y-1 py-1">
                 {[
                   { id: 'visao-geral', label: 'Visão geral' },
-                  { id: 'conversas', label: 'Conversas' },
-                  { id: 'etiquetas', label: 'Etiquetas' },
-                  { id: 'inbox', label: 'Caixa de Entrada' },
                   { id: 'time', label: 'Time' },
+                  { id: 'conversas', label: 'Conversas' },
+                  { id: 'assuntos-recorrentes', label: 'Assuntos Recorrentes' },
+                  { id: 'auditoria', label: 'Linha do Tempo / Auditoria' },
                   { id: 'sla', label: 'SLA' },
                   { id: 'robos', label: 'Robôs' }
                 ].map((subTab) => (

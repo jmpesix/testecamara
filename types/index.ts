@@ -32,3 +32,17 @@ export interface Message {
   created_at: string;
   updated_at: string;
 }
+
+export interface MensagemCamara {
+  id: number;
+  account_id: number;
+  conversation_id: number;
+  content: string;
+  message_type: number;
+  private: boolean;
+  sender_id?: number;
+  sender_type?: string;
+  sender_name?: string;
+  created_at: string;
+  updated_at: string;
+}
