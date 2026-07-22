@@ -905,6 +905,8 @@ export function usePortalData() {
         // Normaliza os dados para o formato que o componente Chat espera
         const formattedHistory = data.map(m => ({
           ...m,
+          content: m.content || m.message || '',
+          message: m.message || m.content || '',
           sender: {
             id: m.sender_id,
             name: m.sender_name,
@@ -914,7 +916,25 @@ export function usePortalData() {
           message_type: m.message_type === 0 ? 'incoming' : (m.message_type === 2 ? 'system' : 'outgoing'),
           raw_message_type: m.message_type
         }));
-        setConversationMessages(formattedHistory);
+
+        setConversationMessages(prev => {
+          // Preserva mensagens otimistas temporárias enviadas recentemente que ainda não constam na resposta do servidor
+          const pendingTemps = prev.filter(p => {
+            if (typeof p.id === 'string' && p.id.startsWith('temp-')) {
+              const pText = (p.content || p.message || '').trim();
+              const alreadyInServer = formattedHistory.some(f => (f.content || f.message || '').trim() === pText);
+              return !alreadyInServer;
+            }
+            return false;
+          });
+
+          const combined = [...formattedHistory, ...pendingTemps];
+          return combined.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.timestamp || 0).getTime();
+            const dateB = new Date(b.created_at || b.timestamp || 0).getTime();
+            return dateA - dateB;
+          });
+        });
       }
     } catch (error) {
       console.error('Erro ao buscar histórico no Supabase:', error);
@@ -933,7 +953,7 @@ export function usePortalData() {
     }
     
     try {
-      await streamAnalyze(msg.message, mode, {
+      await streamAnalyze(msg.message || msg.content || '', mode, {
         onChunk: (chunk) => {
           if (mode === 'suggest') {
             setAiSuggestion(prev => (prev || '') + chunk);
@@ -966,24 +986,67 @@ export function usePortalData() {
 
   const handleSendReply = useCallback(async () => {
     if (!replyText || !selectedMessage) return;
-    
+
+    const sentText = replyText.trim();
+    if (!sentText) return;
+
+    const activeConvId = selectedMessage.conversation_id || selectedMessage.id;
+    const tempMessageId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    const optimisticMsg: Message = {
+      id: tempMessageId as any,
+      content: sentText,
+      message: sentText,
+      message_type: 'outgoing',
+      raw_message_type: 1,
+      created_at: nowIso,
+      sender: {
+        id: userProfile?.id || 0,
+        name: userProfile?.name || 'Assessor Legislativo',
+        type: 'agent'
+      }
+    };
+
+    // 1. Atualização Otimista Imediata na Janela de Chat
+    setConversationMessages(prev => [...prev, optimisticMsg]);
+
+    // 2. Atualização Otimista Imediata na Aba/Lista Lateral de Conversas
+    setMessages(prev => {
+      const convId = Number(activeConvId);
+      const index = prev.findIndex(m => Number(m.conversation_id) === convId || Number(m.id) === convId);
+      if (index !== -1) {
+        const newMessages = [...prev];
+        const updated = { ...newMessages[index] };
+        updated.message = sentText;
+        updated.updated_at = nowIso;
+        newMessages.splice(index, 1);
+        newMessages.unshift(updated);
+        return newMessages;
+      }
+      return prev;
+    });
+
+    // Limpa a caixa de texto e a sugestão de IA imediatamente para fluidez total
+    setReplyText('');
+    setAiSuggestion(null);
+
     setIsSending(true);
     try {
       const response = await fetch('/api/chatwoot/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          conversationId: selectedMessage.conversation_id, 
-          content: replyText,
+          conversationId: activeConvId, 
+          content: sentText,
           resolve: false 
         })
       });
       
       if (response.ok) {
-        setReplyText('');
-        setAiSuggestion(null);
-        fetchConversationHistory(selectedMessage.conversation_id || selectedMessage.id);
-        handleSync(true);
+        // Atualiza o histórico em segundo plano
+        fetchConversationHistory(activeConvId, true);
+        handleSync(true, true);
 
         // Audit Log
         const supabase = getSupabaseClient();
@@ -992,18 +1055,24 @@ export function usePortalData() {
             tipo: 'message',
             acao: `Resposta oficial enviada`,
             usuario: userProfile?.name || 'Assessor Legislativo',
-            alvo: `Protocolo ${selectedMessage.protocol || selectedMessage.conversation_id}`,
-            detalhes: { text_preview: replyText.substring(0, 50) + '...' },
+            alvo: `Protocolo ${selectedMessage.protocol || activeConvId}`,
+            detalhes: { text_preview: sentText.substring(0, 50) + '...' },
             created_at: new Date().toISOString()
           });
           fetchAuditLogs();
         }
       } else {
         const err = await response.json();
-        alert(`Erro ao enviar: ${err.error}`);
+        // Em caso de erro do servidor, remove a mensagem otimista e recupera o texto digitado
+        setConversationMessages(prev => prev.filter(m => m.id !== (tempMessageId as any)));
+        setReplyText(sentText);
+        alert(`Erro ao enviar: ${err.error || 'Erro no servidor'}`);
       }
     } catch (error) {
       console.error('Erro ao enviar resposta:', error);
+      setConversationMessages(prev => prev.filter(m => m.id !== (tempMessageId as any)));
+      setReplyText(sentText);
+      alert('Erro de conexão ao enviar mensagem.');
     } finally {
       setIsSending(false);
     }

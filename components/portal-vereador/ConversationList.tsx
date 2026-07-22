@@ -101,7 +101,7 @@ export function ConversationList({
     if (inboxSubFilter === 'unassigned') return !msg.assignee || msg.assignee === 'Não atribuído';
     
     return true;
-  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }).sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
 
   return (
     <div className={`bg-white border-r border-[#c5a059]/20 flex flex-col z-10 shadow-xl transition-all duration-500 ${mainView === 'reports' ? 'w-0 overflow-hidden border-none' : 'w-[400px]'}`}>

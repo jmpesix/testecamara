@@ -299,7 +299,7 @@ export function ChatWindow({
                   .filter(m => {
                     if (!m) return false;
                     if (m.message_type === 'system' || m.message_type === 2 || m.raw_message_type === 2) return false;
-                    const content = (m.content || '').toLowerCase();
+                    const content = (m.content || m.message || '').toLowerCase();
                     const isAutomation = content.includes('automation system') || 
                                      content.includes('assigned to') ||
                                      (content.includes('added') && (content.includes('label') || content.includes('etiqueta'))) ||
@@ -342,7 +342,7 @@ export function ChatWindow({
                                 : 'bg-white text-[#0a192f] border-[#c5a059]/10 rounded-tl-none'
                             }`}>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                                {m.content}
+                                {m.content || m.message}
                               </p>
                             </div>
                             <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${isSystem ? 'text-[#c5a059]' : 'text-slate-400'}`}>
@@ -458,7 +458,15 @@ export function ChatWindow({
                   <textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Redigir despacho ou resposta oficial..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (replyText.trim() && !isSending) {
+                          handleSendReply();
+                        }
+                      }
+                    }}
+                    placeholder="Redigir despacho ou resposta oficial (Pressione Enter para enviar, Shift+Enter para nova linha)..."
                     className="flex-1 bg-transparent border-none outline-none text-sm p-5 text-[#0a192f] min-h-[100px] max-h-64 resize-none font-medium placeholder:text-[#0a192f]/30"
                   />
                   <div className="flex flex-col gap-3 p-2 flex-shrink-0">
