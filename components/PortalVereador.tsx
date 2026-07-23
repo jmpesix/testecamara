@@ -105,6 +105,7 @@ export default function PortalVereador() {
           sidebarOpenSections={data.sidebarOpenSections}
           setSidebarOpenSections={data.setSidebarOpenSections}
           isUpdatingStatus={data.isUpdatingStatus}
+          actionNotification={data.actionNotification}
           aiInfo={data.aiInfo}
           setAiInfo={data.setAiInfo}
           showAiMenu={data.showAiMenu}

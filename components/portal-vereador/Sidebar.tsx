@@ -115,22 +115,25 @@ export function Sidebar({
               ].map((item) => {
                 const isVereadores = item.id === 'vereadores';
                 const itemCount = conversas.filter(msg => {
-                  const isArchived = msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido');
+                  const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'resolved' || msg.status === 'resolvido';
                   
+                  if (item.id === 'all') return true;
                   if (item.id === 'resolved') return isArchived;
                   if (isArchived) return false;
-
-                  if (item.id === 'all') return msg.inbox_id === 3;
-                  if (item.id === 'vereadores') return (msg.team_id || 0) >= 4 && (msg.team_id || 0) <= 16;
-                  if (item.id === 'duvidas') return msg.team_id === 2;
-                  if (item.id === 'reclamacoes') return msg.team_id === 3;
+                  if (item.id === 'vereadores') {
+                    return ((msg.team_id || 0) >= 4 && (msg.team_id || 0) <= 16) || !!msg.vereador_assigned || !!(msg as any).vereador;
+                  }
+                  if (item.id === 'duvidas') {
+                    return msg.team_id === 2 || msg.theme === 'Dúvidas' || (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'dúvidas' || l.toLowerCase() === 'duvidas'));
+                  }
+                  if (item.id === 'reclamacoes') {
+                    return msg.team_id === 3 || msg.theme === 'Ouvidoria' || (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'ouvidoria' || l.toLowerCase() === 'reclamações' || l.toLowerCase() === 'reclamacoes'));
+                  }
                   
                   return false;
                 }).length;
 
-                const displayCount = (item.id === 'resolved' && reportSummary?.resolutions_count !== undefined) 
-                  ? reportSummary.resolutions_count 
-                  : itemCount;
+                const displayCount = itemCount;
 
                 return (
                   <div key={item.id} className="space-y-1">
@@ -183,7 +186,11 @@ export function Sidebar({
                     {isVereadores && gabinetesExpanded && (
                       <div className="pl-10 space-y-1 py-1">
                         {VEREADORES.map((v) => {
-                          const vCount = conversas.filter(msg => msg.team_id === v.id && !(msg.labels && msg.labels.some(l => l.toLowerCase() === 'resolvido'))).length;
+                          const vCount = conversas.filter(msg => {
+                            const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'resolved' || msg.status === 'resolvido';
+                            if (isArchived) return false;
+                            return msg.team_id === v.id || msg.vereador_assigned === v.name || (msg as any).vereador === v.name;
+                          }).length;
                           return (
                             <button
                               key={v.id}

@@ -28,11 +28,13 @@ import {
   Paperclip, 
   FileText, 
   PieChart,
-  ExternalLink
+  ExternalLink,
+  CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Message } from '@/types';
+import { getPriority, PRIORITY_CONFIG, PriorityLevel } from '@/lib/priority';
 
 interface ChatWindowProps {
   selectedMessage: Message | null;
@@ -54,6 +56,7 @@ interface ChatWindowProps {
   sidebarOpenSections: string[];
   setSidebarOpenSections: React.Dispatch<React.SetStateAction<string[]>>;
   isUpdatingStatus: boolean;
+  actionNotification?: string | null;
   aiInfo: string | null;
   setAiInfo: (val: string | null) => void;
   showAiMenu: boolean;
@@ -95,6 +98,7 @@ export function ChatWindow({
   sidebarOpenSections,
   setSidebarOpenSections,
   isUpdatingStatus,
+  actionNotification,
   aiInfo,
   setAiInfo,
   showAiMenu,
@@ -137,8 +141,20 @@ export function ChatWindow({
 
   if (!selectedMessage) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-20 text-center bg-[#f4f1ea]">
-        <div className="w-60 h-60 mb-10 relative rounded-full overflow-hidden border-4 border-[#c5a059]/30 shadow-[0_20px_50px_rgba(10,25,47,0.3)] hover:scale-105 transition-all duration-500 ease-out bg-[#0a192f] flex items-center justify-center">
+      <motion.div 
+        key="empty-logo-view"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="flex-1 flex flex-col items-center justify-center p-20 text-center bg-[#f4f1ea] h-full"
+      >
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="w-60 h-60 mb-10 relative rounded-full overflow-hidden border-4 border-[#c5a059]/30 shadow-[0_20px_50px_rgba(10,25,47,0.3)] hover:scale-105 transition-all duration-500 ease-out bg-[#0a192f] flex items-center justify-center"
+        >
           <Image 
             src="/logo-camara.png"
             alt="Brasão Câmara Municipal"
@@ -148,12 +164,24 @@ export function ChatWindow({
             priority
             referrerPolicy="no-referrer"
           />
-        </div>
-        <h3 className="font-serif text-4xl font-bold text-[#0a192f] mb-6 tracking-tight italic">Painel do Vereador</h3>
-        <p className="text-[#0a192f]/50 max-w-md font-medium leading-relaxed italic text-lg">
+        </motion.div>
+        <motion.h3 
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="font-serif text-4xl font-bold text-[#0a192f] mb-6 tracking-tight italic"
+        >
+          Painel do Vereador
+        </motion.h3>
+        <motion.p 
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
+          className="text-[#0a192f]/50 max-w-md font-medium leading-relaxed italic text-lg"
+        >
           Selecione um protocolo oficial na galeria à esquerda para iniciar a conferência de documentos e redação legislativa.
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
     );
   }
 
@@ -161,16 +189,51 @@ export function ChatWindow({
     <div className="flex-1 flex bg-[#f4f1ea] relative overflow-hidden">
       {/* Central Chat Panel */}
       <div className="flex-1 flex flex-col min-w-0 relative h-full">
-        <div className="h-20 border-b border-[#c5a059]/20 flex items-center justify-between px-10 bg-white shadow-sm flex-shrink-0 z-10">
-          <div className="flex items-center gap-5 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-[#0a192f] flex items-center justify-center font-serif font-bold text-[#c5a059] border border-[#c5a059]/30 shadow-lg flex-shrink-0">
+        {/* Banner de Feedback Visual / Confirmação com Transição Suave */}
+        <AnimatePresence>
+          {actionNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="absolute top-22 left-1/2 -translate-x-1/2 z-50 bg-[#0a192f]/95 text-[#c5a059] border-2 border-[#c5a059]/50 px-6 py-3.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-4 pointer-events-auto"
+            >
+              <div className="w-8 h-8 rounded-full bg-[#c5a059]/20 border border-[#c5a059]/40 flex items-center justify-center text-[#c5a059] shrink-0">
+                <CheckCircle2 className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="flex flex-col pr-2">
+                <span className="text-white text-xs font-black tracking-wide uppercase">{actionNotification}</span>
+                <span className="text-[#c5a059] text-[10px] font-mono tracking-normal font-medium mt-0.5">
+                  {selectedMessage ? `Protocolo #${selectedMessage.conversation_id}${selectedMessage.protocol ? ` (${selectedMessage.protocol})` : ''}` : 'Sincronizado'}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className={`h-20 border-b border-[#c5a059]/20 flex items-center justify-between ${showContactDetails ? 'px-4 lg:px-6' : 'px-6 lg:px-10'} bg-white shadow-sm flex-shrink-0 z-10 gap-3 transition-all duration-300`}>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-[#0a192f] flex items-center justify-center font-serif font-bold text-[#c5a059] border border-[#c5a059]/30 shadow-lg flex-shrink-0 text-sm md:text-base">
               {selectedMessage.contact_name ? selectedMessage.contact_name[0] : 'J'}
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <p className="font-serif font-bold text-[#0a192f] text-lg tracking-tight truncate max-w-[200px]">{selectedMessage.contact_name || 'Protocolo Reservado'}</p>
-                <span className="text-[10px] font-mono font-bold bg-[#0a192f] text-[#c5a059] px-2 py-0.5 rounded border border-[#c5a059]/30">#{selectedMessage.conversation_id}</span>
-                <div className={`w-2.5 h-2.5 rounded-full shadow-lg flex-shrink-0 ${
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
+                <p className="font-serif font-bold text-[#0a192f] text-base md:text-lg tracking-tight truncate max-w-[120px] sm:max-w-[180px] md:max-w-[220px]">
+                  {selectedMessage.contact_name || 'Protocolo Reservado'}
+                </p>
+                <span className="text-[10px] font-mono font-bold bg-[#0a192f] text-[#c5a059] px-1.5 py-0.5 rounded border border-[#c5a059]/30 flex-shrink-0">
+                  #{selectedMessage.conversation_id}
+                </span>
+                {(() => {
+                  const p = getPriority(selectedMessage);
+                  const cfg = PRIORITY_CONFIG[p];
+                  return (
+                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${cfg.badgeBg} ${cfg.badgeText} ${cfg.badgeBorder} flex items-center gap-1 flex-shrink-0`}>
+                      <span>{cfg.icon}</span> {cfg.label}
+                    </span>
+                  );
+                })()}
+                <div className={`w-2 h-2 rounded-full shadow-lg flex-shrink-0 ${
                   selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido') 
                     ? 'bg-slate-400' 
                     : (selectedMessage.status === 'resolved' || selectedMessage.status === 'AGUARDANDO RESOLUÇÃO')
@@ -179,46 +242,60 @@ export function ChatWindow({
                         ? 'bg-emerald-500 animate-pulse shadow-emerald-500/20'
                         : 'bg-[#c5a059] shadow-[#c5a059]/20'
                 }`} />
-                <span className="text-[10px] font-black uppercase tracking-widest text-[#0a192f]/40">
+                <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-[#0a192f]/40 flex-shrink-0 whitespace-nowrap hidden sm:inline">
                    {selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido') ? 'Arquivada' :
                    selectedMessage.status === 'resolved' ? (selectedMessage.team_id ? 'Pendente Arquivo' : 'Aguardando Gabinete') : 
                    selectedMessage.status === 'AGUARDANDO RESOLUÇÃO' ? 'Aguardando Resolução' :
                    selectedMessage.status === 'open' ? 'Aberta' : 'Pendente'}
                 </span>
-                {selectedMessage.labels && selectedMessage.labels.filter(l => l.toLowerCase() !== 'resolvido').map((label, idx) => (
-                  <span key={idx} className="bg-[#c5a059]/10 text-[#c5a059] text-[9px] px-2 py-0.5 rounded-full border border-[#c5a059]/20 font-black uppercase tracking-widest flex-shrink-0">
-                    {label}
-                  </span>
-                ))}
+                <div className="hidden lg:flex items-center gap-1.5 overflow-hidden flex-shrink">
+                  {selectedMessage.labels && selectedMessage.labels.filter(l => l.toLowerCase() !== 'resolvido').map((label, idx) => (
+                    <span key={idx} className="bg-[#c5a059]/10 text-[#c5a059] text-[9px] px-2 py-0.5 rounded-full border border-[#c5a059]/20 font-black uppercase tracking-widest flex-shrink-0 whitespace-nowrap">
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5 truncate">Fonte Oficial: Câmara de SJB</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5 truncate">
+                Fonte Oficial: Câmara de SJB
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-4 relative flex-shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 relative flex-shrink-0">
             <button 
               onClick={() => {
                 const isArchived = selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido');
                 handleUpdateStatus(isArchived ? 'open' : 'resolved');
               }}
               disabled={isUpdatingStatus}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shadow-sm ${
+              className={`flex items-center gap-1.5 md:gap-2 ${showContactDetails ? 'px-3 py-2 text-[9px]' : 'px-4 md:px-5 py-2.5 text-[10px]'} rounded-xl font-black uppercase tracking-widest transition-all border shadow-sm flex-shrink-0 whitespace-nowrap ${
                 selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido')
                   ? 'bg-emerald-600/10 border-emerald-500/20 text-emerald-600 hover:bg-emerald-600/20'
                   : 'bg-white border-[#c5a059]/30 text-[#0a192f] hover:bg-[#0a192f] hover:text-white'
               }`}
             >
               {isUpdatingStatus ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
-              {selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido') ? 'Reativar Protocolo' : 'Finalizar Documento'}
+              <span className={showContactDetails ? 'hidden xl:inline' : 'hidden sm:inline'}>
+                {selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido') ? 'Reativar Protocolo' : 'Finalizar Documento'}
+              </span>
+              <span className={showContactDetails ? 'xl:hidden' : 'sm:hidden'}>
+                {selectedMessage.labels && selectedMessage.labels.some(l => l.toLowerCase() === 'resolvido') ? 'Reativar' : 'Finalizar'}
+              </span>
             </button>
             
             <div className="relative">
               <button 
                 onClick={() => setShowAiMenu(!showAiMenu)}
                 disabled={isAnalyzing}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a192f] border border-[#c5a059]/30 text-[#c5a059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#152a4a] transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 group"
+                className={`flex items-center gap-1.5 md:gap-2 ${showContactDetails ? 'px-3 py-2 text-[9px]' : 'px-4 md:px-5 py-2.5 text-[10px]'} bg-[#0a192f] border border-[#c5a059]/30 text-[#c5a059] rounded-xl font-black uppercase tracking-widest hover:bg-[#152a4a] transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 group flex-shrink-0 whitespace-nowrap`}
               >
-                <Sparkles className={`w-4 h-4 group-hover:animate-pulse ${isAnalyzing ? 'animate-pulse' : ''}`} />
-                {isAnalyzing ? 'Processando...' : 'Consultar IA'}
+                <Sparkles className={`w-3.5 h-3.5 md:w-4 md:h-4 group-hover:animate-pulse ${isAnalyzing ? 'animate-pulse' : ''}`} />
+                <span className={showContactDetails ? 'hidden xl:inline' : 'hidden sm:inline'}>
+                  {isAnalyzing ? 'Processando...' : 'Consultar IA'}
+                </span>
+                <span className={showContactDetails ? 'xl:hidden' : 'sm:hidden'}>
+                  IA
+                </span>
               </button>
               
               {showAiMenu && (
@@ -598,13 +675,11 @@ export function ChatWindow({
                 </div>
               </div>
 
-              {/* Accordion Sections - Unified and Ordered as per image */}
+              {/* Accordion Sections - Unified into 'Informações da conversa' */}
               <div className="space-y-3">
                 {[
-                  { id: 'actions', label: 'Ações da conversa' },
+                  { id: 'info', label: 'Informações da conversa' },
                   { id: 'macros', label: 'Macros' },
-                  { id: 'info', label: 'Informação da conversa' },
-                  { id: 'attributes', label: 'Atributos do contato' },
                   { id: 'attachments', label: 'Anexos' },
                   { id: 'previous', label: 'Conversas anteriores' }
                 ].map((item) => {
@@ -636,8 +711,9 @@ export function ChatWindow({
                             className="border-t border-white/5 bg-[#0a192f]/20 overflow-hidden"
                           >
                             <div className="p-4">
-                              {item.id === 'actions' && (
+                              {item.id === 'info' && (
                                 <div className="space-y-4">
+                                  {/* Estado do Protocolo */}
                                   <div className="space-y-3">
                                     <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Estado do Protocolo</p>
                                     <div className="grid grid-cols-2 gap-2">
@@ -656,6 +732,8 @@ export function ChatWindow({
                                       ))}
                                     </div>
                                   </div>
+
+                                  {/* Atribuição de Gabinete */}
                                   <div className="pt-2 space-y-3 border-t border-white/5">
                                     <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Atribuição de Gabinete</p>
                                     <div className="relative group/select">
@@ -676,52 +754,104 @@ export function ChatWindow({
                                       </div>
                                     </div>
                                   </div>
+
+                                  {/* Classificação de Prioridade */}
+                                  <div className="pt-2 space-y-3 border-t border-white/5">
+                                    <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Classificação de Prioridade</p>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {(['alta', 'media', 'baixa'] as PriorityLevel[]).map((pLevel) => {
+                                        const cfg = PRIORITY_CONFIG[pLevel];
+                                        const currentP = getPriority(selectedMessage);
+                                        const isSel = currentP === pLevel;
+                                        return (
+                                          <button
+                                            key={pLevel}
+                                            onClick={() => {
+                                              if (selectedMessage) {
+                                                setSelectedMessage({
+                                                  ...selectedMessage,
+                                                  priority: pLevel
+                                                });
+                                              }
+                                            }}
+                                            className={`py-2 px-1 rounded-lg text-[8px] font-black uppercase tracking-wider border transition-all flex items-center justify-center gap-1 ${
+                                              isSel 
+                                                ? `${cfg.badgeBg} ${cfg.badgeText} ${cfg.badgeBorder} font-bold shadow-sm` 
+                                                : 'bg-white/5 text-white/40 border-white/5 hover:border-white/20'
+                                            }`}
+                                          >
+                                            <span>{cfg.icon}</span> {cfg.label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Detalhes da Conversa */}
+                                  <div className="pt-2 space-y-3 border-t border-white/5">
+                                    <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Detalhes da Conversa</p>
+                                    <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-2">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-white/40 uppercase tracking-tighter">Conversa ID</span>
+                                        <span className="text-[10px] font-mono text-white/80">#{selectedMessage.conversation_id}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-white/40 uppercase tracking-tighter">Iniciada em</span>
+                                        <span className="text-[10px] text-white/80">{safeFormatDate(selectedMessage.created_at)}</span>
+                                      </div>
+                                      {fullConversationData?.meta?.channel && (
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[9px] text-white/40 uppercase tracking-tighter">Canal</span>
+                                          <span className="text-[10px] text-white/80 truncate ml-2">{fullConversationData.meta?.channel}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Atributos do Contato */}
+                                  <div className="pt-2 space-y-3 border-t border-white/5">
+                                    <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Atributos do Contato</p>
+                                    {(() => {
+                                      const attrs = fullConversationData?.custom_attributes || selectedMessage?.custom_attributes || {};
+                                      const entries = Object.entries(attrs);
+                                      if (entries.length === 0) {
+                                        return (
+                                          <div className="text-center py-3 border border-dashed border-white/10 rounded-xl">
+                                            <p className="text-[9px] text-white/20 uppercase font-black">Nenhum atributo</p>
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div className="space-y-2">
+                                          {entries.map(([key, value]: [string, any]) => {
+                                            const strVal = String(value || '');
+                                            const isLong = strVal.length > 25;
+                                            return (
+                                              <div key={key} className="p-3 bg-white/5 rounded-xl border border-white/5">
+                                                {isLong ? (
+                                                  <div className="space-y-1">
+                                                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">{key}</span>
+                                                    <p className="text-[10px] text-white/90 leading-relaxed font-sans break-words">{strVal}</p>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex justify-between items-center gap-2">
+                                                    <span className="text-[9px] text-white/40 uppercase tracking-tighter flex-shrink-0">{key}</span>
+                                                    <span className="text-[10px] text-white/80 font-bold truncate text-right">{strVal}</span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
                                 </div>
                               )}
 
                               {item.id === 'macros' && (
                                 <div className="text-center py-6">
                                   <p className="text-[9px] text-white/20 uppercase font-black tracking-widest">Nenhuma macro disponível</p>
-                                </div>
-                              )}
-
-                              {item.id === 'info' && (
-                                <div className="space-y-3">
-                                  <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[9px] text-white/40 uppercase tracking-tighter">Conversa ID</span>
-                                      <span className="text-[10px] font-mono text-white/80">#{selectedMessage.conversation_id}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[9px] text-white/40 uppercase tracking-tighter">Iniciada em</span>
-                                      <span className="text-[10px] text-white/80">{safeFormatDate(selectedMessage.created_at)}</span>
-                                    </div>
-                                    {fullConversationData && (
-                                      <>
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-[9px] text-white/40 uppercase tracking-tighter">Canal</span>
-                                          <span className="text-[10px] text-white/80 truncate ml-2">{fullConversationData.meta?.channel}</span>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {item.id === 'attributes' && (
-                                <div className="space-y-3">
-                                  {fullConversationData?.custom_attributes && Object.keys(fullConversationData.custom_attributes).length > 0 ? (
-                                    Object.entries(fullConversationData.custom_attributes).map(([key, value]: [string, any]) => (
-                                      <div key={key} className="p-3 bg-white/5 rounded-xl border border-white/5 flex justify-between items-center">
-                                        <span className="text-[9px] text-white/40 uppercase tracking-tighter">{key}</span>
-                                        <span className="text-[10px] text-white/80 font-bold">{String(value)}</span>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div className="text-center py-4 border-2 border-dashed border-white/5 rounded-xl">
-                                      <p className="text-[9px] text-white/20 uppercase font-black">Nenhum atributo</p>
-                                    </div>
-                                  )}
                                 </div>
                               )}
 

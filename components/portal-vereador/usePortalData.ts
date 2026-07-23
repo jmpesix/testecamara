@@ -28,7 +28,7 @@ export function usePortalData() {
   const [isSending, setIsSending] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [fullConversationData, setFullConversationData] = useState<any>(null);
-  const [sidebarOpenSections, setSidebarOpenSections] = useState<string[]>(['Ações da conversa']);
+  const [sidebarOpenSections, setSidebarOpenSections] = useState<string[]>(['Informações da conversa']);
   const [pollingInterval, setPollingInterval] = useState(3000);
   const stabilityCounter = useRef(0);
   const lastDataSignature = useRef<string>('');
@@ -48,7 +48,7 @@ export function usePortalData() {
   const [reportConversations, setReportConversations] = useState<any[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [inboxInfo, setInboxInfo] = useState<any>(null);
-  const [showContactDetails, setShowContactDetails] = useState(true);
+  const [showContactDetails, setShowContactDetails] = useState(false);
   const [reportTab, setReportTab] = useState<'visao-geral' | 'conversas' | 'assuntos-recorrentes' | 'inbox' | 'time' | 'sla' | 'robos' | 'auditoria'>('visao-geral');
   const [reportRange, setReportRange] = useState<string>('7days');
   const [customDateRange, setCustomDateRange] = useState<{from: Date; to: Date}>({
@@ -66,6 +66,7 @@ export function usePortalData() {
 
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [actionNotification, setActionNotification] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [aiInfo, setAiInfo] = useState<string | null>(null);
   const [showAiMenu, setShowAiMenu] = useState(false);
@@ -184,8 +185,7 @@ export function usePortalData() {
       const { data: messagesData, error } = await supabase
         .from('atendimentos_camara')
         .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(15);
+        .order('updated_at', { ascending: false });
 
       if (error) throw error;
       
@@ -325,12 +325,13 @@ export function usePortalData() {
       }
 
       // Consulta direta ao Supabase (Cache de Atendimentos)
-      const { data: records, error } = await supabase
-        .from('atendimentos_camara')
-        .select('*')
-        .gte('created_at', sinceDate.toISOString())
-        .lte('created_at', untilDate.toISOString())
-        .order('created_at', { ascending: false });
+      let query = supabase.from('atendimentos_camara').select('*');
+      
+      if (reportRange !== 'all') {
+        query = query.or(`created_at.gte.${sinceDate.toISOString()},updated_at.gte.${sinceDate.toISOString()}`);
+      }
+
+      const { data: records, error } = await query.order('updated_at', { ascending: false });
 
       if (error) throw error;
 
@@ -571,7 +572,7 @@ export function usePortalData() {
         setReportConversations(Object.values(dailyAgg).sort((a, b) => b.timestamp - a.timestamp));
       }
 
-      if (reportTab === 'auditoria') {
+      if (reportTab === 'auditoria' || reportTab === 'visao-geral') {
         await fetchAuditLogs();
       }
 
@@ -588,101 +589,221 @@ export function usePortalData() {
   const handleUpdateStatus = useCallback(async (status: 'open' | 'resolved' | 'pending' | 'snoozed') => {
     if (!selectedMessage) return;
     
-    // Backup para possível rollback
+    // Captura o ID correto da conversa (conversation_id ou id)
+    const conversationId = selectedMessage.conversation_id || selectedMessage.id;
+    if (!conversationId) return;
+
+    // Backup para referência em auditoria
     const previousMessage = { ...selectedMessage };
     
     setIsUpdatingStatus(true);
     
-    // 1. Atualização Otimista
+    // 1. ATUALIZAÇÃO OTIMISTA INSTANTÂNEA EM TEMPO REAL
     let updatedLabels = [...(selectedMessage.labels || [])];
     if (status === 'resolved') {
       if (!updatedLabels.some(l => l.toLowerCase() === 'resolvido')) updatedLabels.push('resolvido');
-      updatedLabels = updatedLabels.filter(l => !['em atendimento', 'em-atendimento', 'em_atendimento', 'em andamento', 'em-andamento', 'em_atendimento'].includes(l.toLowerCase()));
+      updatedLabels = updatedLabels.filter(l => !['em atendimento', 'em-atendimento', 'em_atendimento', 'em andamento', 'em-andamento', 'em_andamento'].includes(l.toLowerCase()));
     } else if (status === 'open') {
       updatedLabels = updatedLabels.filter(l => l.toLowerCase() !== 'resolvido');
     }
     
-    setSelectedMessage(prev => prev ? { ...prev, status, labels: updatedLabels } : null);
+    // Atualiza a conversa selecionada instantaneamente
+    setSelectedMessage(prev => prev ? { ...prev, conversation_id: conversationId, status, labels: updatedLabels } : null);
+
+    // Atualiza a lista lateral (conversas/messages) instantaneamente
+    setMessages(prev => prev.map(m => {
+      const mId = m.conversation_id || m.id;
+      if (mId === conversationId || m.conversation_id === conversationId || m.id === conversationId || (selectedMessage.protocol && m.protocol === selectedMessage.protocol)) {
+        return {
+          ...m,
+          status,
+          labels: updatedLabels
+        };
+      }
+      return m;
+    }));
+
+    // Atualiza contadores do gabinete em tempo real
+    setCounts((prev: any) => {
+      if (!prev) return prev;
+      if (status === 'resolved') {
+        return {
+          ...prev,
+          open_count: Math.max(0, (prev.open_count || 1) - 1),
+          resolved_count: (prev.resolved_count || 0) + 1
+        };
+      } else if (status === 'open') {
+        return {
+          ...prev,
+          open_count: (prev.open_count || 0) + 1,
+          resolved_count: Math.max(0, (prev.resolved_count || 1) - 1)
+        };
+      }
+      return prev;
+    });
+
+    // Atualiza relatórios do gabinete em tempo real
+    setReportSummary((prev: any) => {
+      if (!prev) return prev;
+      if (status === 'resolved') {
+        return {
+          ...prev,
+          resolutions_count: (prev.resolutions_count || 0) + 1
+        };
+      }
+      return prev;
+    });
+
+    // 2. FEEDBACK VISUAL E NOTIFICAÇÃO INSTANTÂNEA
+    const notifText = status === 'resolved' 
+      ? 'Protocolo Finalizado com Sucesso' 
+      : status === 'open' 
+        ? 'Protocolo Reativado' 
+        : `Status alterado para ${status.toUpperCase()}`;
+    setActionNotification(notifText);
+    setTimeout(() => {
+      setActionNotification(null);
+    }, 4500);
+
+    // Fechamento suave e transição para o logo em caso de finalização
+    if (status === 'resolved') {
+      setTimeout(() => {
+        setSelectedMessage(null);
+      }, 1600);
+    }
+
+    // 3. AUDITORIA EM TEMPO REAL
+    const auditAction = status === 'resolved' 
+      ? 'Finalizou o protocolo e marcou como resolvido' 
+      : status === 'open'
+        ? 'Reativou o protocolo e marcou como aberto'
+        : `Status alterado para ${status.toUpperCase()}`;
+        
+    const newAuditLogItem = {
+      id: `audit-${Date.now()}`,
+      tipo: 'status',
+      acao: auditAction,
+      usuario: userProfile?.name || 'Assessor Legislativo',
+      alvo: `Protocolo #${conversationId}${selectedMessage.protocol ? ` (${selectedMessage.protocol})` : ''}`,
+      detalhes: { previous_status: previousMessage.status, new_status: status },
+      created_at: new Date().toISOString()
+    };
+    setAuditLogs(prev => [newAuditLogItem, ...prev]);
 
     try {
-      // 2. Chamadas de API (Chatwoot)
-      const response = await fetch(`/api/chatwoot/conversations/${selectedMessage.conversation_id}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      
-      if (response.ok) {
-        // 2. Lógica customizada de arquivamento do Portal
-        let updatedLabels = [...(selectedMessage.labels || [])];
-        let labelsChanged = false;
+      // 4. PERSISTÊNCIA DIRETA NO BANCO DE DADOS SUPABASE (atendimentos_camara)
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const numericConvId = Number(conversationId);
+          const dbUpdateData: any = {
+            status: status,
+            labels: updatedLabels,
+            updated_at: new Date().toISOString()
+          };
 
-        if (status === 'resolved') {
-          // Se estamos resolvendo/arquivando no portal, adicionamos a label
-          if (!updatedLabels.some(l => l.toLowerCase() === 'resolvido')) {
-            updatedLabels.push('resolvido');
-            labelsChanged = true;
+          let updateSuccess = false;
+          
+          if (!isNaN(numericConvId)) {
+            const { data: res1, error: err1 } = await supabase
+              .from('atendimentos_camara')
+              .update(dbUpdateData)
+              .or(`conversation_id.eq.${numericConvId},id.eq.${numericConvId}`)
+              .select('id, conversation_id');
+            if (!err1 && res1 && res1.length > 0) updateSuccess = true;
           }
-          // Remove variações de "Em Atendimento" ou "Em Andamento" se existirem
-          const labelsToRemove = [
-            'em atendimento', 'em-atendimento', 'em_atendimento',
-            'em andamento', 'em-andamento', 'em_andamento'
-          ];
-          const initialLength = updatedLabels.length;
-          updatedLabels = updatedLabels.filter(l => !labelsToRemove.includes(l.toLowerCase()));
-          if (updatedLabels.length !== initialLength) {
-            labelsChanged = true;
-          }
-        } else if (status === 'open') {
-          // Se estamos reabrindo, removemos a label de arquivado
-          if (updatedLabels.some(l => l.toLowerCase() === 'resolvido')) {
-            updatedLabels = updatedLabels.filter(l => l.toLowerCase() !== 'resolvido');
-            labelsChanged = true;
-          }
-        }
 
-        if (labelsChanged) {
-          await fetch(`/api/chatwoot/conversations/${selectedMessage.conversation_id}/labels`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ labels: updatedLabels })
-          });
-        }
+          if (!updateSuccess) {
+            const { data: res2, error: err2 } = await supabase
+              .from('atendimentos_camara')
+              .update(dbUpdateData)
+              .or(`conversation_id.eq.${conversationId},id.eq.${conversationId}`)
+              .select('id, conversation_id');
+            if (!err2 && res2 && res2.length > 0) updateSuccess = true;
+          }
 
-        handleSync(true);
-        
-        // Audit Log
-        const supabase = getSupabaseClient();
-        if (supabase) {
+          if (!updateSuccess && selectedMessage.protocol) {
+            const { data: res3, error: err3 } = await supabase
+              .from('atendimentos_camara')
+              .update(dbUpdateData)
+              .eq('protocol', selectedMessage.protocol)
+              .select('id, conversation_id');
+            if (!err3 && res3 && res3.length > 0) updateSuccess = true;
+          }
+
+          // Se o registro não existia na tabela do Supabase, cria via upsert
+          if (!updateSuccess) {
+            await supabase.from('atendimentos_camara').upsert({
+              account_id: selectedMessage.account_id ? Number(selectedMessage.account_id) : parseInt(process.env.NEXT_PUBLIC_CHATWOOT_ACCOUNT_ID || '0'),
+              conversation_id: !isNaN(numericConvId) ? numericConvId : conversationId,
+              id: conversationId,
+              protocol: selectedMessage.protocol || `PROTO-${conversationId}`,
+              message: selectedMessage.message || selectedMessage.content || 'Atendimento registrado',
+              status: status,
+              labels: updatedLabels,
+              contact_name: selectedMessage.contact_name || selectedMessage.sender?.name || 'Cidadão',
+              contact_phone: selectedMessage.contact_phone || (selectedMessage as any).phone || null,
+              vereador_assigned: selectedMessage.vereador_assigned || (selectedMessage as any).vereador || null,
+              updated_at: new Date().toISOString(),
+              created_at: selectedMessage.created_at || new Date().toISOString()
+            }, { onConflict: 'conversation_id' });
+          }
+
+          // Grava log de auditoria no Supabase
           await supabase.from('audit_logs').insert({
             tipo: 'status',
-            acao: `Status alterado para ${status.toUpperCase()}`,
+            acao: auditAction,
             usuario: userProfile?.name || 'Assessor Legislativo',
-            alvo: `Protocolo ${selectedMessage.protocol || selectedMessage.conversation_id}`,
+            alvo: `Protocolo #${conversationId}${selectedMessage.protocol ? ` (${selectedMessage.protocol})` : ''}`,
             detalhes: { previous_status: previousMessage.status, new_status: status },
             created_at: new Date().toISOString()
           });
           fetchAuditLogs();
-        }
-
-        if (status === 'resolved') {
-          // Atualiza o estado local primeiro para refletir a mudança visualmente (badge, etc)
-          setSelectedMessage(prev => prev ? { ...prev, status, labels: updatedLabels } : null);
-          
-          // Delay suave de 1600ms antes de fechar a conversa
-          setTimeout(() => {
-            setSelectedMessage(null);
-          }, 1600);
-        } else {
-          setSelectedMessage(prev => prev ? { ...prev, status, labels: updatedLabels } : null);
+        } catch (dbEx) {
+          console.warn('[Supabase] Aviso na atualização direta:', dbEx);
         }
       }
+
+      // 5. CHATWOOT API (Sincronização opcional/em segundo plano)
+      try {
+        const response = await fetch(`/api/chatwoot/conversations/${conversationId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        
+        if (response.ok) {
+          let labelsChanged = false;
+          if (status === 'resolved') {
+            if (!updatedLabels.some(l => l.toLowerCase() === 'resolvido')) {
+              updatedLabels.push('resolvido');
+              labelsChanged = true;
+            }
+          } else if (status === 'open') {
+            if (updatedLabels.some(l => l.toLowerCase() === 'resolvido')) {
+              updatedLabels = updatedLabels.filter(l => l.toLowerCase() !== 'resolvido');
+              labelsChanged = true;
+            }
+          }
+
+          if (labelsChanged) {
+            await fetch(`/api/chatwoot/conversations/${conversationId}/labels`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ labels: updatedLabels })
+            });
+          }
+        }
+      } catch (cwErr) {
+        console.warn('Chatwoot API offline/indisponível. Estado preservado localmente e no Supabase:', cwErr);
+      }
+
     } catch (error) {
-      console.error('Erro ao atualizar status:', error);
+      console.error('Erro na finalização do protocolo:', error);
     } finally {
       setIsUpdatingStatus(false);
     }
-  }, [selectedMessage, handleSync, userProfile, fetchAuditLogs]);
+  }, [selectedMessage, userProfile, fetchAuditLogs]);
 
   const handleUpdatePriority = useCallback(async (priority: 'urgent' | 'high' | 'medium' | 'low' | null) => {
     if (!selectedMessage) return;
@@ -1122,6 +1243,7 @@ export function usePortalData() {
       if (lastSelectedId.current !== numericId) {
         lastSelectedId.current = numericId;
         setIsFirstLoad(true);
+        setShowContactDetails(false);
         fetchConversationHistory(numericId);
         if (selectedMessage.contact_id) {
           fetchContactConversations(selectedMessage.contact_id, numericId);
@@ -1502,6 +1624,7 @@ export function usePortalData() {
     selectedTeamId, setSelectedTeamId,
     userProfile,
     isUpdatingStatus,
+    actionNotification, setActionNotification,
     aiInfo, setAiInfo,
     showAiMenu, setShowAiMenu,
     handleUpdateStatus,
@@ -1515,5 +1638,5 @@ export function usePortalData() {
     handleSync: forceImmediateSync,
     forceImmediateSync,
     fetchConversationHistory
-  }), [messages, selectedMessage, conversationMessages, loadingHistory, inboxSubFilter, mainView, lastSync, inboxFilter, contactConversations, loadingContactHistory, replyText, isAnalyzing, aiSuggestion, loading, mounted, isSending, isFirstLoad, fullConversationData, sidebarOpenSections, cannedResponses, showCanned, counts, teams, reportSummary, reportDaily, reportTeams, reportChannels, reportDistribution, reportConversations, loadingReports, inboxInfo, showContactDetails, reportTab, reportRange, customDateRange, reportsExpanded, gabinetesExpanded, selectedVereador, auditLogs, labels, loadingLabels, fetchLabels, selectedLabel, selectedTeamId, userProfile, isUpdatingStatus, aiInfo, showAiMenu, handleUpdateStatus, handleAnalyze, handleSendReply, handleAddLabel, handleAssignTeam, fetchConversationDetails, fetchContactConversations, handleUpdatePriority, forceImmediateSync, fetchConversationHistory, toggleLabelVisibility]);
+  }), [messages, selectedMessage, conversationMessages, loadingHistory, inboxSubFilter, mainView, lastSync, inboxFilter, contactConversations, loadingContactHistory, replyText, isAnalyzing, aiSuggestion, loading, mounted, isSending, isFirstLoad, fullConversationData, sidebarOpenSections, cannedResponses, showCanned, counts, teams, reportSummary, reportDaily, reportTeams, reportChannels, reportDistribution, reportConversations, loadingReports, inboxInfo, showContactDetails, reportTab, reportRange, customDateRange, reportsExpanded, gabinetesExpanded, selectedVereador, auditLogs, labels, loadingLabels, fetchLabels, selectedLabel, selectedTeamId, userProfile, isUpdatingStatus, actionNotification, aiInfo, showAiMenu, handleUpdateStatus, handleAnalyze, handleSendReply, handleAddLabel, handleAssignTeam, fetchConversationDetails, fetchContactConversations, handleUpdatePriority, forceImmediateSync, fetchConversationHistory, toggleLabelVisibility]);
 }

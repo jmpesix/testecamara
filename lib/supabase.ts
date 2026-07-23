@@ -397,10 +397,7 @@ export async function syncSingleConversationToSupabase(conversationId: number, w
       }
     }
 
-    let statusParaOBanco = conv.status;
-    if (conv.status === 'resolved') {
-      statusParaOBanco = 'AGUARDANDO RESOLUÇÃO';
-    }
+    const statusParaOBanco = conv.status || 'open';
 
     const chatwootUpdatedAtRaw = conv.updated_at || webhookPayload?.updated_at;
     let chatwootUpdatedAt: string | null = null;
