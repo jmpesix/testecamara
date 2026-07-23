@@ -66,7 +66,7 @@ export function ConversationList({
     // Filtro Global por Time
     if (selectedTeamId && msg.team_id !== selectedTeamId) return false;
 
-    const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'resolved' || msg.status === 'resolvido';
+    const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'arquivado';
 
     // Filtro por visualização principal
     if (mainView === 'resolved') {

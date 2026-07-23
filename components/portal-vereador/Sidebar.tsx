@@ -115,7 +115,7 @@ export function Sidebar({
               ].map((item) => {
                 const isVereadores = item.id === 'vereadores';
                 const itemCount = conversas.filter(msg => {
-                  const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'resolved' || msg.status === 'resolvido';
+                  const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'arquivado';
                   
                   if (item.id === 'all') return true;
                   if (item.id === 'resolved') return isArchived;
@@ -187,7 +187,7 @@ export function Sidebar({
                       <div className="pl-10 space-y-1 py-1">
                         {VEREADORES.map((v) => {
                           const vCount = conversas.filter(msg => {
-                            const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'resolved' || msg.status === 'resolvido';
+                            const isArchived = (msg.labels && Array.isArray(msg.labels) && msg.labels.some((l: any) => l.toLowerCase() === 'resolvido')) || msg.status === 'arquivado';
                             if (isArchived) return false;
                             return msg.team_id === v.id || msg.vereador_assigned === v.name || (msg as any).vereador === v.name;
                           }).length;
